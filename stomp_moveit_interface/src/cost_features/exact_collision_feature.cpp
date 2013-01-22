@@ -10,6 +10,11 @@
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 
+PLUGINLIB_DECLARE_CLASS(stomp_ros_interface,
+                        ExactCollisionFeature,
+                        stomp_ros_interface::ExactCollisionFeature,
+                        stomp_ros_interface::StompCostFeature);
+
 namespace stomp_ros_interface
 {
 
@@ -30,7 +35,7 @@ ExactCollisionFeature::~ExactCollisionFeature()
 {
 }
 
-bool ExactCollisionFeature::initialize(XmlRpc::XmlRpcValue& config)
+bool ExactCollisionFeature::initialize(XmlRpc::XmlRpcValue& config, const StompRobotModel::StompPlanningGroup* planning_group)
 {
   return true;
 }
@@ -38,6 +43,12 @@ bool ExactCollisionFeature::initialize(XmlRpc::XmlRpcValue& config)
 int ExactCollisionFeature::getNumValues() const
 {
   return 1;
+}
+
+void ExactCollisionFeature::getNames(std::vector<std::string>& names) const
+{
+  names.clear();
+  names.push_back(getName());
 }
 
 void ExactCollisionFeature::computeValuesAndGradients(boost::shared_ptr<learnable_cost_function::Input const> generic_input, std::vector<double>& feature_values,

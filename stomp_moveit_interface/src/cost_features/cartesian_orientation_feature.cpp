@@ -8,6 +8,11 @@
 #include <stomp_ros_interface/cost_features/cartesian_orientation_feature.h>
 #include <stomp_ros_interface/stomp_cost_function_input.h>
 
+PLUGINLIB_DECLARE_CLASS(stomp_ros_interface,
+                        CartesianOrientationFeature,
+                        stomp_ros_interface::CartesianOrientationFeature,
+                        stomp_ros_interface::StompCostFeature);
+
 namespace stomp_ros_interface
 {
 
@@ -19,7 +24,7 @@ CartesianOrientationFeature::~CartesianOrientationFeature()
 {
 }
 
-bool CartesianOrientationFeature::initialize(XmlRpc::XmlRpcValue& config)
+bool CartesianOrientationFeature::initialize(XmlRpc::XmlRpcValue& config, const StompRobotModel::StompPlanningGroup* planning_group)
 {
   return true;
 }
@@ -27,6 +32,12 @@ bool CartesianOrientationFeature::initialize(XmlRpc::XmlRpcValue& config)
 int CartesianOrientationFeature::getNumValues() const
 {
   return 1;
+}
+
+void CartesianOrientationFeature::getNames(std::vector<std::string>& names) const
+{
+  names.clear();
+  names.push_back(getName());
 }
 
 void CartesianOrientationFeature::computeValuesAndGradients(boost::shared_ptr<learnable_cost_function::Input const> generic_input, std::vector<double>& feature_values,
@@ -46,12 +57,14 @@ void CartesianOrientationFeature::computeValuesAndGradients(boost::shared_ptr<le
   }
 
   // abs dot product of end effector orient and cart velocity
-  int i = input->collision_point_pos_.size()-1;
-  int j = input->planning_group_->end_effector_segment_index_;
-  KDL::Vector orient_vector = input->segment_frames_[j].M.UnitZ();
-  KDL::Vector velocity_vector = input->collision_point_vel_[i];
-  velocity_vector.Normalize();
+  KDL::Vector orient_vector = input->endeffector_frame_.M.UnitZ();
+  KDL::Vector velocity_vector = input->endeffector_vel_.vel;
   feature_values[0] = fabs(KDL::dot(orient_vector, velocity_vector));
+
+  // difference from trajectory end-point
+  //int num_time_steps = input->per_rollout_data_->cost_function_input_.size();
+
+
 
 }
 

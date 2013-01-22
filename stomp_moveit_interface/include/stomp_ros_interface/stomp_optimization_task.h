@@ -16,6 +16,8 @@
 #include <learnable_cost_function/feature_set.h>
 #include <planning_environment/models/collision_models_interface.h>
 #include <stomp_ros_interface/stomp_collision_space.h>
+#include <pluginlib/class_loader.h>
+#include <stomp_ros_interface/cost_features/stomp_cost_feature.h>
 
 namespace stomp_ros_interface
 {
@@ -34,6 +36,7 @@ public:
   virtual bool initialize(int num_threads, int num_rollouts);
 
   void setFeatures(std::vector<boost::shared_ptr<learnable_cost_function::Feature> >& features);
+  void setFeaturesFromXml(const XmlRpc::XmlRpcValue& config);
 
   virtual bool execute(std::vector<Eigen::VectorXd>& parameters,
                        std::vector<Eigen::VectorXd>& projected_parameters,
@@ -60,15 +63,23 @@ public:
   void setMotionPlanRequest(const arm_navigation_msgs::MotionPlanRequest& request);
 
   void setInitialTrajectory(const std::vector<sensor_msgs::JointState>& joint_states);
+  void getTrajectory(std::vector<sensor_msgs::JointState>& joint_states);
+  void setToMinControlCostTrajectory();
 
-  void setFeatureWeights(std::vector<double> weights);
-  void setFeatureScaling(std::vector<double> means, std::vector<double> variances);
+  void setFeatureWeights(const std::vector<double>& weights);
+  void setFeatureWeights(const Eigen::VectorXd& weights);
+  void setFeatureWeightsFromFile(const std::string& abs_file_name);
+  void setFeatureScaling(const std::vector<double>& means, const std::vector<double>& variances);
+  void setFeatureScalingFromFile(const std::string& abs_means_file,
+                                 const std::string& abs_variance_file);
 
   void publishTrajectoryMarkers(ros::Publisher& viz_pub);
 
   void publishCollisionModelMarkers(int rollout_number);
 
   void parametersToJointTrajectory(const std::vector<Eigen::VectorXd>& parameters, trajectory_msgs::JointTrajectory& trajectory);
+
+  int getNumFeatures();
 
   struct PerRolloutData
   {
@@ -96,9 +107,13 @@ public:
     boost::shared_ptr<KDL::TreeFkSolverJointPosAxisPartial> fk_solver_;
     void differentiate(double dt);
     void publishMarkers(ros::Publisher& viz_pub, int id, bool noiseless, const std::string& reference_frame);
+    void publishMarkers(ros::Publisher& viz_pub, int id, const std::string& ns,
+                        const std_msgs::ColorRGBA& color, double size, const std::string& reference_frame);
+    boost::shared_ptr<PerRolloutData> clone();
   };
 
-  void getRolloutData(PerRolloutData& noiseless_rollout, std::vector<PerRolloutData>& noisy_rollouts);
+  void getNoisyRolloutData(std::vector<PerRolloutData>& noisy_rollouts);
+  void getNoiselessRolloutData(PerRolloutData& noiseless_rollout);
 
   virtual bool getPolicy(boost::shared_ptr<stomp::CovariantMovementPrimitive>& policy);
 
@@ -109,6 +124,9 @@ public:
 
   virtual void onEveryIteration();
   void setTrajectoryVizPublisher(ros::Publisher& viz_trajectory_pub);
+
+  const StompRobotModel::StompPlanningGroup* getPlanningGroup();
+
 
 private:
   boost::shared_ptr<StompRobotModel> robot_model_;
@@ -151,6 +169,9 @@ private:
   int num_features_;            // original number of features
   int num_split_features_;      // number of features after "time-split"
   Eigen::MatrixXd feature_basis_functions_; // num_time x num_basis_functions
+
+  pluginlib::ClassLoader<StompCostFeature> feature_loader_;
+
 };
 
 } /* namespace stomp_ros_interface */

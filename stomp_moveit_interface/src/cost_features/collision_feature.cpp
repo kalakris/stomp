@@ -8,6 +8,12 @@
 #include <stomp_ros_interface/cost_features/collision_feature.h>
 #include <stomp_ros_interface/stomp_cost_function_input.h>
 #include <stomp_ros_interface/sigmoid.h>
+#include <sstream>
+
+PLUGINLIB_DECLARE_CLASS(stomp_ros_interface,
+                        CollisionFeature,
+                        stomp_ros_interface::CollisionFeature,
+                        stomp_ros_interface::StompCostFeature);
 
 namespace stomp_ros_interface
 {
@@ -32,15 +38,15 @@ CollisionFeature::CollisionFeature()
   sigmoid_centers_.push_back(0.1);
   sigmoid_slopes_.push_back(200.0);
 
-  //num_sigmoids_ = sigmoid_centers_.size();
-  num_sigmoids_ = 0;
+  num_sigmoids_ = sigmoid_centers_.size();
+  //num_sigmoids_ = 0;
 }
 
 CollisionFeature::~CollisionFeature()
 {
 }
 
-bool CollisionFeature::initialize(XmlRpc::XmlRpcValue& config)
+bool CollisionFeature::initialize(XmlRpc::XmlRpcValue& config, const StompRobotModel::StompPlanningGroup* planning_group)
 {
   return true;
 }
@@ -48,6 +54,18 @@ bool CollisionFeature::initialize(XmlRpc::XmlRpcValue& config)
 int CollisionFeature::getNumValues() const
 {
   return 1 + num_sigmoids_; // 1 for smooth cost, rest for sigmoids
+}
+
+void CollisionFeature::getNames(std::vector<std::string>& names) const
+{
+  names.clear();
+  names.push_back(getName()+"/DistanceFieldCost");
+  for (int i=0; i<num_sigmoids_; ++i)
+  {
+    std::stringstream ss;
+    ss << getName() << "/Sigmoid_" << sigmoid_centers_[i];
+    names.push_back(ss.str());
+  }
 }
 
 void CollisionFeature::computeValuesAndGradients(boost::shared_ptr<learnable_cost_function::Input const> generic_input, std::vector<double>& feature_values,
@@ -96,7 +114,7 @@ void CollisionFeature::computeValuesAndGradients(boost::shared_ptr<learnable_cos
     for (int i=0; i<num_sigmoids_; ++i)
     {
       double val = (1.0 - sigmoid(distance, sigmoid_centers_[i], sigmoid_slopes_[i]));
-      feature_values[i+2] += val * vel_mag;
+      feature_values[i+1] += val * vel_mag;
       //printf("distance = %f, sigmoid %d = %f\n", distance, i, val);
     }
 

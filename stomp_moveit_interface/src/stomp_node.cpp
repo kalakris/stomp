@@ -11,6 +11,12 @@
 #include <stomp_ros_interface/stomp_node.h>
 #include <stomp_ros_interface/stomp_optimization_task.h>
 
+#include <stomp_ros_interface/cost_features/cartesian_orientation_feature.h>
+#include <stomp_ros_interface/cost_features/cartesian_vel_acc_feature.h>
+#include <stomp_ros_interface/cost_features/collision_feature.h>
+#include <stomp_ros_interface/cost_features/exact_collision_feature.h>
+#include <stomp_ros_interface/cost_features/joint_vel_acc_feature.h>
+
 namespace stomp_ros_interface
 {
 
@@ -30,6 +36,14 @@ bool StompNode::run()
 
   ros::NodeHandle stomp_task_nh(node_handle_, "task");
   ros::NodeHandle optimizer_task_nh(node_handle_, "optimizer");
+
+  ros::NodeHandle local_nh("~");
+  std::string weights_file, means_file, variances_file;
+  ROS_VERIFY(local_nh.getParam("weights_file", weights_file));
+  ROS_VERIFY(local_nh.getParam("variances_file", variances_file));
+  ROS_VERIFY(local_nh.getParam("means_file", means_file));
+  XmlRpc::XmlRpcValue features_xml;
+  ROS_VERIFY(local_nh.getParam("features", features_xml));
 
   int max_rollouts;
   ROS_VERIFY(optimizer_task_nh.getParam("max_rollouts", max_rollouts));
@@ -51,15 +65,12 @@ bool StompNode::run()
     stomp_task->initialize(8, max_rollouts+1);
     stomp_task->setTrajectoryVizPublisher(rviz_trajectory_pub_);
 
-    // TODO - hardcoded weights for now
-    std::vector<double> weights;
-    weights.resize(4, 0.0);
-    weights[0] = 1.0;
-    weights[1] = 20.0;
-    weights[2] = 4.0;
-    weights[3] = 0.0;
+    stomp_task->setFeaturesFromXml(features_xml);
+    stomp_task->setFeatureWeightsFromFile(weights_file);
+    stomp_task->setFeatureScalingFromFile(means_file, variances_file);
+
+    // TODO: hardcoded control cost weight for now
     stomp_task->setControlCostWeight(0.00001);
-    stomp_task->setFeatureWeights(weights);
 
     stomp_tasks_.insert(std::make_pair(name, stomp_task));
 
