@@ -41,8 +41,6 @@
 // ros includes
 #include <ros/package.h>
 #include <stomp/stomp.h>
-#include <usc_utilities/assert.h>
-#include <usc_utilities/param_server.h>
 #include <boost/filesystem.hpp>
 
 namespace stomp
@@ -60,14 +58,14 @@ STOMP::~STOMP()
 bool STOMP::initialize(ros::NodeHandle& node_handle, boost::shared_ptr<stomp::Task> task)
 {
   node_handle_ = node_handle;
-  ROS_VERIFY(readParameters());
+  STOMP_VERIFY(readParameters());
 
   task_ = task;
-  ROS_VERIFY(task_->getPolicy(policy_));
-  ROS_VERIFY(policy_->getNumTimeSteps(num_time_steps_));
+  STOMP_VERIFY(task_->getPolicy(policy_));
+  STOMP_VERIFY(policy_->getNumTimeSteps(num_time_steps_));
   control_cost_weight_ = task_->getControlCostWeight();
 
-  ROS_VERIFY(policy_->getNumDimensions(num_dimensions_));
+  STOMP_VERIFY(policy_->getNumDimensions(num_dimensions_));
   ROS_ASSERT(num_dimensions_ == static_cast<int>(noise_decay_.size()));
   ROS_ASSERT(num_dimensions_ == static_cast<int>(noise_stddev_.size()));
   ROS_ASSERT(num_dimensions_ == static_cast<int>(noise_min_stddev_.size()));
@@ -98,14 +96,12 @@ bool STOMP::initialize(ros::NodeHandle& node_handle, boost::shared_ptr<stomp::Ta
 
 bool STOMP::readParameters()
 {
-  ROS_VERIFY(usc_utilities::read(node_handle_, std::string("min_rollouts"), min_rollouts_));
-  ROS_VERIFY(usc_utilities::read(node_handle_, std::string("max_rollouts"), max_rollouts_));
-  ROS_VERIFY(usc_utilities::read(node_handle_, std::string("num_rollouts_per_iteration"), num_rollouts_per_iteration_));
-  //ROS_VERIFY(usc_utilities::read(node_handle_, std::string("num_time_steps"), num_time_steps_));
-
-  ROS_VERIFY(usc_utilities::readDoubleArray(node_handle_, "noise_stddev", noise_stddev_));
-  ROS_VERIFY(usc_utilities::readDoubleArray(node_handle_, "noise_decay", noise_decay_));
-  ROS_VERIFY(usc_utilities::readDoubleArray(node_handle_, "noise_min_stddev", noise_min_stddev_));
+  STOMP_VERIFY(node_handle_.getParam("min_rollouts", min_rollouts_));
+  STOMP_VERIFY(node_handle_.getParam("max_rollouts", max_rollouts_));
+  STOMP_VERIFY(node_handle_.getParam("num_rollouts_per_iteration", num_rollouts_per_iteration_));
+  STOMP_VERIFY(readDoubleArray(node_handle_, "noise_stddev", noise_stddev_));
+  STOMP_VERIFY(readDoubleArray(node_handle_, "noise_decay", noise_decay_));
+  STOMP_VERIFY(readDoubleArray(node_handle_, "noise_min_stddev", noise_min_stddev_));
   node_handle_.param("write_to_file", write_to_file_, true); // defaults are sometimes good!
   node_handle_.param("use_noise_adaptation", use_noise_adaptation_, true);
   node_handle_.param("use_openmp", use_openmp_, false);
@@ -120,8 +116,8 @@ bool STOMP::readPolicy(const int iteration_number)
     return true;
   }
   /*    ROS_INFO("Read policy from file %s.", policy_->getFileName(iteration_number).c_str());
-    ROS_VERIFY(policy_->readFromDisc(policy_->getFileName(iteration_number)));
-    ROS_VERIFY(task_->setPolicy(policy_));
+    STOMP_VERIFY(policy_->readFromDisc(policy_->getFileName(iteration_number)));
+    STOMP_VERIFY(task_->setPolicy(policy_));
    */    return true;
 }
 
@@ -146,7 +142,7 @@ bool STOMP::doGenRollouts(int iteration_number)
   }
 
   // get rollouts
-  ROS_VERIFY(policy_improvement_.getRollouts(rollouts_, noise));
+  STOMP_VERIFY(policy_improvement_.getRollouts(rollouts_, noise));
   // filter rollouts and set them back if filtered:
   bool filtered = false;
   for (unsigned int r=0; r<rollouts_.size(); ++r)
@@ -158,7 +154,7 @@ bool STOMP::doGenRollouts(int iteration_number)
   {
     policy_improvement_.setRollouts(rollouts_);
   }
-  ROS_VERIFY(policy_improvement_.computeProjectedNoise());
+  STOMP_VERIFY(policy_improvement_.computeProjectedNoise());
 
   // overwrite the rollouts with the projected versions
   policy_improvement_.getProjectedRollouts(projected_rollouts_);
@@ -175,7 +171,7 @@ bool STOMP::doExecuteRollouts(int iteration_number)
     int thread_id = omp_get_thread_num();
 //    printf("thread_id = %d\n", thread_id);
     bool validity;
-    ROS_VERIFY(task_->execute(projected_rollouts_[r], projected_rollouts_[r], tmp_rollout_cost_[r], tmp_rollout_weighted_features_[r],
+    STOMP_VERIFY(task_->execute(projected_rollouts_[r], projected_rollouts_[r], tmp_rollout_cost_[r], tmp_rollout_weighted_features_[r],
                               iteration_number, r, thread_id, false, gradients, validity));
   }
   for (int r=0; r<int(rollouts_.size()); ++r)
@@ -198,12 +194,12 @@ bool STOMP::doUpdate(int iteration_number)
 {
   // TODO: fix this std::vector<>
   std::vector<double> all_costs;
-  ROS_VERIFY(policy_improvement_.setRolloutCosts(rollout_costs_, control_cost_weight_, all_costs));
+  STOMP_VERIFY(policy_improvement_.setRolloutCosts(rollout_costs_, control_cost_weight_, all_costs));
 
   // improve the policy
-  ROS_VERIFY(policy_improvement_.improvePolicy(parameter_updates_));
-  ROS_VERIFY(policy_improvement_.getTimeStepWeights(time_step_weights_));
-  ROS_VERIFY(policy_->updateParameters(parameter_updates_, time_step_weights_));
+  STOMP_VERIFY(policy_improvement_.improvePolicy(parameter_updates_));
+  STOMP_VERIFY(policy_improvement_.getTimeStepWeights(time_step_weights_));
+  STOMP_VERIFY(policy_->updateParameters(parameter_updates_, time_step_weights_));
 
   return true;
 }
@@ -212,9 +208,9 @@ bool STOMP::doNoiselessRollout(int iteration_number)
 {
   // get a noise-less rollout to check the cost
   std::vector<Eigen::VectorXd> gradients;
-  ROS_VERIFY(policy_->getParameters(parameters_));
+  STOMP_VERIFY(policy_->getParameters(parameters_));
   bool validity = false;
-  ROS_VERIFY(task_->execute(parameters_, parameters_, tmp_rollout_cost_[0], tmp_rollout_weighted_features_[0], iteration_number,
+  STOMP_VERIFY(task_->execute(parameters_, parameters_, tmp_rollout_cost_[0], tmp_rollout_weighted_features_[0], iteration_number,
                             -1, 0, false, gradients, validity));
   double total_cost;
   policy_improvement_.setNoiselessRolloutCosts(tmp_rollout_cost_[0], total_cost);
@@ -238,7 +234,7 @@ bool STOMP::runSingleIteration(const int iteration_number)
   if (write_to_file_)
   {
     // load new policy if neccessary
-    ROS_VERIFY(readPolicy(iteration_number));
+    STOMP_VERIFY(readPolicy(iteration_number));
   }
 
   ROS_ASSERT(doRollouts(iteration_number));
@@ -248,8 +244,8 @@ bool STOMP::runSingleIteration(const int iteration_number)
   if (write_to_file_)
   {
     // store updated policy to disc
-    //ROS_VERIFY(writePolicy(iteration_number));
-    //ROS_VERIFY(writePolicyImprovementStatistics(stats_msg));
+    //STOMP_VERIFY(writePolicy(iteration_number));
+    //STOMP_VERIFY(writePolicyImprovementStatistics(stats_msg));
   }
 
   return true;

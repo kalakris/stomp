@@ -36,8 +36,6 @@
 
 #include <stomp/covariant_movement_primitive.h>
 #include <stomp/stomp_utils.h>
-#include <usc_utilities/assert.h>
-#include <usc_utilities/param_server.h>
 #include <Eigen/LU>
 #include <Eigen/Core>
 #include <Eigen/Cholesky>
@@ -68,9 +66,9 @@ bool CovariantMovementPrimitive::initialize(const int num_time_steps,
   derivative_costs_ = derivative_costs;
   parameters_all_ = initial_trajectory;
 
-  ROS_VERIFY(initializeVariables());
-  ROS_VERIFY(initializeCosts());
-  ROS_VERIFY(initializeBasisFunctions());
+  STOMP_VERIFY(initializeVariables());
+  STOMP_VERIFY(initializeCosts());
+  STOMP_VERIFY(initializeBasisFunctions());
 
   return true;
 }

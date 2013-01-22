@@ -9,12 +9,11 @@
 #include <ros/ros.h>
 #include <sstream>
 #include <cstdio>
-#include <usc_utilities/param_server.h>
-#include <usc_utilities/assert.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <stdlib.h>
 #include <time.h>
+#include <stomp/stomp_utils.h>
 
 namespace stomp
 {
@@ -179,25 +178,25 @@ void Stomp2DTest::readParameters()
   // WARNING, TODO: no error checking here!!!
   obstacles_.clear();
   XmlRpc::XmlRpcValue obstacles_xml;
-  node_handle_.getParam("cost_function", obstacles_xml);
+  STOMP_VERIFY(node_handle_.getParam("cost_function", obstacles_xml));
   for (int i=0; i<obstacles_xml.size(); ++i)
   {
     Obstacle o;
-    ROS_VERIFY(usc_utilities::getParam(obstacles_xml[i], "center", o.center_));
-    ROS_VERIFY(usc_utilities::getParam(obstacles_xml[i], "radius", o.radius_));
-    ROS_VERIFY(usc_utilities::getParam(obstacles_xml[i], "boolean", o.boolean_));
+    STOMP_VERIFY(getParam(obstacles_xml[i], "center", o.center_));
+    STOMP_VERIFY(getParam(obstacles_xml[i], "radius", o.radius_));
+    STOMP_VERIFY(getParam(obstacles_xml[i], "boolean", o.boolean_));
     obstacles_.push_back(o);
   }
 
-  usc_utilities::read(node_handle_, "num_iterations", num_iterations_);
-  usc_utilities::read(node_handle_, "num_time_steps", num_time_steps_);
-  usc_utilities::read(node_handle_, "movement_duration", movement_duration_);
-  usc_utilities::read(node_handle_, "control_cost_weight", control_cost_weight_);
-  usc_utilities::read(node_handle_, "output_dir", output_dir_);
-  usc_utilities::read(node_handle_, "use_chomp", use_chomp_);
-  usc_utilities::read(node_handle_, "save_noisy_trajectories", save_noisy_trajectories_);
-  usc_utilities::read(node_handle_, "save_noiseless_trajectories", save_noiseless_trajectories_);
-  usc_utilities::read(node_handle_, "save_cost_function", save_cost_function_);
+  STOMP_VERIFY(node_handle_.getParam("num_iterations", num_iterations_));
+  STOMP_VERIFY(node_handle_.getParam("num_time_steps", num_time_steps_));
+  STOMP_VERIFY(node_handle_.getParam("movement_duration", movement_duration_));
+  STOMP_VERIFY(node_handle_.getParam("control_cost_weight", control_cost_weight_));
+  STOMP_VERIFY(node_handle_.getParam("output_dir", output_dir_));
+  STOMP_VERIFY(node_handle_.getParam("use_chomp", use_chomp_));
+  STOMP_VERIFY(node_handle_.getParam("save_noisy_trajectories", save_noisy_trajectories_));
+  STOMP_VERIFY(node_handle_.getParam("save_noiseless_trajectories", save_noiseless_trajectories_));
+  STOMP_VERIFY(node_handle_.getParam("save_cost_function", save_cost_function_));
 }
 
 bool Stomp2DTest::execute(std::vector<Eigen::VectorXd>& parameters,
@@ -439,12 +438,12 @@ double Stomp2DTest::getControlCostWeight()
 
 int main(int argc, char ** argv)
 {
-  ros::init(argc, argv, "Stomp2DTest");
+  ros::init(argc, argv, "test_stomp2d");
 
   // check if we want to do large-scale testing
   ros::NodeHandle node_handle("~");
-  bool large_scale;
-  usc_utilities::read(node_handle, "large_scale", large_scale);
+  bool large_scale = false;
+  node_handle.getParam("large_scale", large_scale);
   if (!large_scale)
   {
     boost::shared_ptr<stomp::Stomp2DTest> test(new stomp::Stomp2DTest());
@@ -464,20 +463,20 @@ int main(int argc, char ** argv)
   std::vector<bool> stomp_use_noise_adaptation_or_not;
   std::vector<bool> cost_function_bool_or_not;
 
-  usc_utilities::read(node_handle, "large_scale_output_dir", large_scale_output_dir);
+  STOMP_VERIFY(node_handle.getParam("large_scale_output_dir", large_scale_output_dir));
   mkdir(large_scale_output_dir.c_str(), 0755);
-  usc_utilities::read(node_handle, "output_dir", output_dir);
-  usc_utilities::read(node_handle, "stomp_repetitions", stomp_repetitions);
-  usc_utilities::read(node_handle, "stomp_rollouts", stomp_rollouts_dbl);
+  STOMP_VERIFY(node_handle.getParam("output_dir", output_dir));
+  STOMP_VERIFY(node_handle.getParam("stomp_repetitions", stomp_repetitions));
+  STOMP_VERIFY(stomp::readDoubleArray(node_handle, "stomp_rollouts", stomp_rollouts_dbl));
   // convert dbls to int
   for (unsigned int i=0; i<stomp_rollouts_dbl.size(); ++i)
     stomp_rollouts.push_back(lrint(stomp_rollouts_dbl[i]));
-  usc_utilities::read(node_handle, "stomp_noises", stomp_noises);
-  usc_utilities::read(node_handle, "chomp_learning_rates", chomp_learning_rates);
-  usc_utilities::read(node_handle, "cost_function_names", cost_function_names);
+  STOMP_VERIFY(stomp::readDoubleArray(node_handle, "stomp_noises", stomp_noises));
+  STOMP_VERIFY(stomp::readDoubleArray(node_handle, "chomp_learning_rates", chomp_learning_rates));
+  STOMP_VERIFY(stomp::readStringArray(node_handle, "cost_function_names", cost_function_names));
 
   std::vector<double> tmp_dbl;
-  usc_utilities::read(node_handle, "stomp_noise_adaptations", tmp_dbl);
+  STOMP_VERIFY(stomp::readDoubleArray(node_handle, "stomp_noise_adaptations", tmp_dbl));
   for (unsigned int i=0; i<tmp_dbl.size(); ++i)
   {
     bool val = (tmp_dbl[i]<=0.0)? false: true;
@@ -485,7 +484,7 @@ int main(int argc, char ** argv)
   }
 
   tmp_dbl.clear();
-  usc_utilities::read(node_handle, "cost_function_bools", tmp_dbl);
+  STOMP_VERIFY(stomp::readDoubleArray(node_handle, "cost_function_bools", tmp_dbl));
   for (unsigned int i=0; i<tmp_dbl.size(); ++i)
   {
     bool val = (tmp_dbl[i]<=0.0)? false: true;

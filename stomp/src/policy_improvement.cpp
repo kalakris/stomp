@@ -44,7 +44,6 @@
 // local includes
 #include <ros/ros.h>
 #include <stomp/policy_improvement.h>
-#include <usc_utilities/assert.h>
 #include <algorithm>
 
 using namespace Eigen;
@@ -77,13 +76,13 @@ bool PolicyImprovement::initialize(const int num_time_steps,
   use_covariance_matrix_adaptation_ = use_noise_adaptation;
   adapted_covariance_valid_ = false;
 
-  ROS_VERIFY(policy_->setNumTimeSteps(num_time_steps_));
-  ROS_VERIFY(policy_->getControlCosts(control_costs_));
-  ROS_VERIFY(policy_->getNumDimensions(num_dimensions_));
-  ROS_VERIFY(policy_->getNumParameters(num_parameters_));
-  ROS_VERIFY(policy_->getBasisFunctions(basis_functions_));
-  ROS_VERIFY(policy_->getParameters(parameters_));
-  ROS_VERIFY(policy_->getInvControlCosts(inv_control_costs_));
+  STOMP_VERIFY(policy_->setNumTimeSteps(num_time_steps_));
+  STOMP_VERIFY(policy_->getControlCosts(control_costs_));
+  STOMP_VERIFY(policy_->getNumDimensions(num_dimensions_));
+  STOMP_VERIFY(policy_->getNumParameters(num_parameters_));
+  STOMP_VERIFY(policy_->getBasisFunctions(basis_functions_));
+  STOMP_VERIFY(policy_->getParameters(parameters_));
+  STOMP_VERIFY(policy_->getInvControlCosts(inv_control_costs_));
 
   // invert the control costs, initialize noise generators:
   noise_generators_.clear();
@@ -96,9 +95,9 @@ bool PolicyImprovement::initialize(const int num_time_steps,
     adapted_covariances_.push_back(inv_control_costs_[d]);
   }
 
-  ROS_VERIFY(setNumRollouts(min_rollouts, max_rollouts, num_rollouts_per_iteration));
-  ROS_VERIFY(preAllocateTempVariables());
-  ROS_VERIFY(preComputeProjectionMatrices());
+  STOMP_VERIFY(setNumRollouts(min_rollouts, max_rollouts, num_rollouts_per_iteration));
+  STOMP_VERIFY(preAllocateTempVariables());
+  STOMP_VERIFY(preComputeProjectionMatrices());
 
   return (initialized_ = true);
 }
@@ -162,7 +161,7 @@ bool PolicyImprovement::generateRollouts(const std::vector<double>& noise_stddev
     adapted_stddevs_ = noise_stddev;
 
   // save the latest policy parameters:
-  ROS_VERIFY(copyParametersFromPolicy());
+  STOMP_VERIFY(copyParametersFromPolicy());
 
 
 
@@ -360,7 +359,7 @@ bool PolicyImprovement::setRolloutCosts(const Eigen::MatrixXd& costs, const doub
 //    ROS_ASSERT(int(rollouts.size()) == num_rollouts_extra_);
 //
 //    // update our parameter values, so that the computed noise is correct:
-//    ROS_VERIFY(copyParametersFromPolicy());
+//    STOMP_VERIFY(copyParametersFromPolicy());
 //
 //    for (int r=0; r<num_rollouts_extra_; ++r)
 //    {

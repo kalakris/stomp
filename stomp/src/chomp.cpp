@@ -6,8 +6,6 @@
  */
 
 #include <stomp/chomp.h>
-#include <usc_utilities/assert.h>
-#include <usc_utilities/param_server.h>
 
 namespace stomp
 {
@@ -24,7 +22,7 @@ CHOMP::~CHOMP()
 bool CHOMP::initialize(ros::NodeHandle& node_handle, boost::shared_ptr<Task> task)
 {
   node_handle_ = node_handle;
-  ROS_VERIFY(readParameters());
+  STOMP_VERIFY(readParameters());
 
   task_ = task;
   task_->getPolicy(policy_);
@@ -83,8 +81,8 @@ void CHOMP::getNoiselessRollout(Rollout& rollout)
 
 bool CHOMP::readParameters()
 {
-  ROS_VERIFY(usc_utilities::read(node_handle_, std::string("learning_rate"), learning_rate_));
-  ROS_VERIFY(usc_utilities::read(node_handle_, std::string("max_update"), max_update_));
+  STOMP_VERIFY(node_handle_.getParam("learning_rate", learning_rate_));
+  STOMP_VERIFY(node_handle_.getParam("max_update", max_update_));
   return true;
 }
 
