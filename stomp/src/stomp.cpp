@@ -298,4 +298,14 @@ bool STOMP::runUntilValid(int max_iterations, int iterations_after_collision_fre
   return success;
 }
 
+void STOMP::setCostCumulation(bool use_cumulative_costs)
+{
+  policy_improvement_.setCostCumulation(use_cumulative_costs);
+}
+
+void STOMP::resetAdaptiveNoise()
+{
+  policy_improvement_.resetAdaptiveNoise();
+}
+
 }

@@ -168,6 +168,10 @@ public:
     void getNoiselessRollout(Rollout& rollout);
     void getAdaptedStddevs(std::vector<double>& stddevs);
 
+    void setCostCumulation(bool use_cumulative_costs);
+
+    void resetAdaptiveNoise();
+
 private:
 
     bool initialized_;
