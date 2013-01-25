@@ -75,16 +75,6 @@ bool CovariantMovementPrimitive::initialize(const int num_time_steps,
 
 bool CovariantMovementPrimitive::setToMinControlCost()
 {
-  //    for (int d=0; d<num_dimensions_; ++d)
-  //    {
-  //        // set the start and end of the trajectory
-  //        for (int i=0; i<DIFF_RULE_LENGTH-1; ++i)
-  //        {
-  //            parameters_all_[d](i) = start(d);
-  //            parameters_all_[d](num_vars_all_-1-i) = goal(d);
-  //        }
-  //
-  //    }
   computeMinControlCostParameters();
   return true;
 }
@@ -158,7 +148,6 @@ bool CovariantMovementPrimitive::initializeVariables()
     ROS_ASSERT(derivative_costs_[d].cols() == NUM_DIFF_RULES);
     ROS_ASSERT(derivative_costs_[d].rows() == num_vars_all_);
   }
-  //parameters_all_.resize(num_dimensions_, Eigen::VectorXd::Zero(num_vars_all_));
 
   return true;
 }
@@ -211,29 +200,16 @@ bool CovariantMovementPrimitive::initializeBasisFunctions()
 
 void CovariantMovementPrimitive::createDifferentiationMatrices()
 {
-  double multiplier = 1.0;
   differentiation_matrices_.clear();
   differentiation_matrices_.resize(NUM_DIFF_RULES, MatrixXd::Zero(num_vars_all_, num_vars_all_));
+
   for (int d=0; d<NUM_DIFF_RULES; ++d)
   {
-    for (int i=0; i<num_vars_all_; i++)
-    {
-      for (int j=-DIFF_RULE_LENGTH/2; j<=DIFF_RULE_LENGTH/2; j++)
-      {
-        int index = i+j;
-        if (index < 0)
-          continue;
-        if (index >= num_vars_all_)
-          continue;
-        differentiation_matrices_[d](i,index) = multiplier * DIFF_RULES[d][j+DIFF_RULE_LENGTH/2];
-      }
-    }
-    multiplier /= movement_dt_;
-    //ROS_INFO_STREAM(differentiation_matrices_[d]);
+    stomp::getDifferentiationMatrix(num_vars_all_, stomp::CostComponents(d), movement_dt_, differentiation_matrices_[d]);
   }
 }
 
-bool CovariantMovementPrimitive::getDerivatives(int derivative_number, std::vector<Eigen::VectorXd>& derivatives)
+bool CovariantMovementPrimitive::getDerivatives(int derivative_number, std::vector<Eigen::VectorXd>& derivatives) const
 {
   derivatives.resize(num_dimensions_);
   for (int dim=0; dim<num_dimensions_; ++dim)
@@ -481,6 +457,11 @@ double CovariantMovementPrimitive::getMovementDuration() const
 double CovariantMovementPrimitive::getMovementDt() const
 {
   return movement_dt_;
+}
+
+void CovariantMovementPrimitive::getDifferentiationMatrix(int derivative_number, Eigen::MatrixXd& differentiation_matrix) const
+{
+  differentiation_matrix = differentiation_matrices_[derivative_number];
 }
 
 }

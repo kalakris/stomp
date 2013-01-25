@@ -173,7 +173,9 @@ public:
      * @param derivatives - output trajectories [num_vars_free]
      * @return true on success, false on failure
      */
-    bool getDerivatives(int derivative_number, std::vector<Eigen::VectorXd>& derivatives);
+    bool getDerivatives(int derivative_number, std::vector<Eigen::VectorXd>& derivatives) const;
+
+    void getDifferentiationMatrix(int derivative_number, Eigen::MatrixXd& differentiation_matrix) const;
 
     double getMovementDuration() const;
     double getMovementDt() const;

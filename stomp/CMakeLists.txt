@@ -20,6 +20,7 @@ add_library(stomp
   src/covariant_movement_primitive.cpp
   src/policy_improvement.cpp
   src/stomp.cpp
+  src/stomp_utils.cpp
 )
 
 add_executable(test_stomp2d
