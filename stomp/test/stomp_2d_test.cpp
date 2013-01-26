@@ -65,6 +65,9 @@ int Stomp2DTest::run()
                       derivative_costs,
                       initial_trajectory);
   policy_->setToMinControlCost();
+  policy_->getParametersAll(initial_trajectory_);
+  vel_diff_matrix_ = policy_->getDifferentiationMatrix(stomp::STOMP_VELOCITY);
+  acc_diff_matrix_ = policy_->getDifferentiationMatrix(stomp::STOMP_ACCELERATION);
   movement_dt_ = policy_->getMovementDt();
 
   if (save_cost_function_)
@@ -208,43 +211,52 @@ bool Stomp2DTest::execute(std::vector<Eigen::VectorXd>& parameters,
                      int thread_id,
                      bool compute_gradients,
                      std::vector<Eigen::VectorXd>& gradients,
-                     bool& validity)
+                     bool& validity) const
 {
   costs = Eigen::VectorXd::Zero(num_time_steps_);
   //weighted_feature_values = Eigen::MatrixXd::Zero(num_time_steps_, 1);
-  std::vector<Eigen::VectorXd> vel(num_dimensions_, Eigen::VectorXd::Zero(num_time_steps_));
-  std::vector<Eigen::VectorXd> acc(num_dimensions_, Eigen::VectorXd::Zero(num_time_steps_));
+  Eigen::MatrixXd proj_pos(num_dimensions_, num_time_steps_ + 2*TRAJECTORY_PADDING);
+  Eigen::MatrixXd pos(num_dimensions_, num_time_steps_ + 2*TRAJECTORY_PADDING);
+  Eigen::MatrixXd vel(num_dimensions_, num_time_steps_ + 2*TRAJECTORY_PADDING);
+  Eigen::MatrixXd acc(num_dimensions_, num_time_steps_ + 2*TRAJECTORY_PADDING);
+
+  for (int d=0; d<num_dimensions_; ++d)
+  {
+    proj_pos.row(d) = initial_trajectory_[d];
+    pos.row(d) = initial_trajectory_[d];
+    //printf("lvalue size = %d, %d, rvalue size = %d, %d", 1, num_time_steps_, projected_parameters[d].rows(), projected_parameters[d].cols());
+    proj_pos.block(d, TRAJECTORY_PADDING, 1, num_time_steps_) = projected_parameters[d].transpose();
+    pos.block(d, TRAJECTORY_PADDING, 1, num_time_steps_) = parameters[d].transpose();
+  }
 
   if (compute_gradients)
   {
     gradients.resize(num_dimensions_, Eigen::VectorXd::Zero(num_time_steps_));
   }
 
-  for (int d=0; d<num_dimensions_; ++d)
+  vel = (vel_diff_matrix_ * pos.transpose()).transpose();
+  if (compute_gradients)
   {
-    stomp::differentiate(projected_parameters[d], stomp::STOMP_VELOCITY, vel[d], movement_dt_);
-    if (compute_gradients)
-    {
-      stomp::differentiate(projected_parameters[d], stomp::STOMP_ACCELERATION, acc[d], movement_dt_);
-    }
+    acc = (acc_diff_matrix_ * pos.transpose()).transpose();
   }
+
   double px = 0.01;
   double py = 0.01;
-  for (int t=0; t<num_time_steps_; ++t)
+  for (int t=TRAJECTORY_PADDING; t<TRAJECTORY_PADDING+num_time_steps_; ++t)
   {
-    double x = parameters[0](t);
-    double y = parameters[1](t);
+    double x = pos(0,t);
+    double y = pos(1,t);
     double cost = 0.0;
     if (compute_gradients)
     {
-      cost = evaluateCostPathWithGradients(px, py, x, y, vel[0](t), vel[1](t), true,
-                                           acc[0](t), acc[1](t), gradients[0](t), gradients[1](t));
+      cost = evaluateCostPathWithGradients(px, py, x, y, vel(0,t), vel(1,t), true,
+                                           acc(0,t), acc(1,t), gradients[0](t), gradients[1](t));
     }
     else
     {
-      cost = evaluateCostPath(px, py, x, y, vel[0](t), vel[1](t));
+      cost = evaluateCostPath(px, py, x, y, vel(0,t), vel(1,t));
     }
-    costs(t) = cost;
+    costs(t-TRAJECTORY_PADDING) = cost;
     px = x;
     py = y;
   }
@@ -252,13 +264,13 @@ bool Stomp2DTest::execute(std::vector<Eigen::VectorXd>& parameters,
   return true;
 }
 
-double Stomp2DTest::evaluateCost(double x, double y, double vx, double vy)
+double Stomp2DTest::evaluateCost(double x, double y, double vx, double vy) const
 {
   double ax=0.0, ay=0.0, gx=0.0, gy=0.0;
   return evaluateCostWithGradients(x, y, vx, vy, false, ax, ay, gx, gy);
 }
 
-double Stomp2DTest::evaluateMapCost(double x, double y)
+double Stomp2DTest::evaluateMapCost(double x, double y) const
 {
   double cost = 0.0;
   for (unsigned int o=0; o<obstacles_.size(); ++o)
@@ -309,7 +321,7 @@ double Stomp2DTest::evaluateMapCost(double x, double y)
   return cost;
 }
 
-void Stomp2DTest::evaluateMapGradients(double x, double y, double& gx, double& gy)
+void Stomp2DTest::evaluateMapGradients(double x, double y, double& gx, double& gy) const
 {
   gx = (evaluateMapCost(x+resolution_, y) - evaluateMapCost(x-resolution_, y)) / (2*resolution_);
   gy = (evaluateMapCost(x, y+resolution_) - evaluateMapCost(x, y-resolution_)) / (2*resolution_);
@@ -317,7 +329,7 @@ void Stomp2DTest::evaluateMapGradients(double x, double y, double& gx, double& g
 
 double Stomp2DTest::evaluateCostWithGradients(double x, double y, double vx, double vy,
                                 bool compute_gradients,
-                                double ax, double ay, double& gx, double& gy)
+                                double ax, double ay, double& gx, double& gy) const
 {
   double cost = evaluateMapCost(x,y) * movement_dt_;
   double vel_mag = sqrt(vx*vx + vy*vy);
@@ -351,7 +363,7 @@ double Stomp2DTest::evaluateCostWithGradients(double x, double y, double vx, dou
   return cost*vel_mag;
 }
 
-double Stomp2DTest::evaluateCostPath(double x1, double y1, double x2, double y2, double vx, double vy)
+double Stomp2DTest::evaluateCostPath(double x1, double y1, double x2, double y2, double vx, double vy) const
 {
   double ax = 0.0, ay = 0.0, gx = 0.0, gy = 0.0;
   return evaluateCostPathWithGradients(x1, y1, x2, y2, vx, vy, false, ax, ay, gx, gy);
@@ -359,7 +371,7 @@ double Stomp2DTest::evaluateCostPath(double x1, double y1, double x2, double y2,
 
 double Stomp2DTest::evaluateCostPathWithGradients(double x1, double y1, double x2, double y2, double vx, double vy,
                                      bool compute_gradients,
-                                     double ax, double ay, double& gx, double& gy)
+                                     double ax, double ay, double& gx, double& gy) const
 {
   double dx = x2 - x1;
   double dy = y2 - y1;
@@ -394,7 +406,7 @@ double Stomp2DTest::evaluateCostPathWithGradients(double x1, double y1, double x
   return cost;
 }
 
-bool Stomp2DTest::filter(std::vector<Eigen::VectorXd>& parameters, int thread_id)
+bool Stomp2DTest::filter(std::vector<Eigen::VectorXd>& parameters, int thread_id) const
 {
   return false;
   bool filtered = false;

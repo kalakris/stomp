@@ -175,7 +175,7 @@ public:
      */
     bool getDerivatives(int derivative_number, std::vector<Eigen::VectorXd>& derivatives) const;
 
-    void getDifferentiationMatrix(int derivative_number, Eigen::MatrixXd& differentiation_matrix) const;
+    const Eigen::MatrixXd& getDifferentiationMatrix(int derivative_number) const;
 
     double getMovementDuration() const;
     double getMovementDt() const;

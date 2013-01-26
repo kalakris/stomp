@@ -63,6 +63,7 @@ public:
 
     /**
      * Executes the task for the given policy parameters, and returns the costs per timestep
+     * Must be thread-safe!
      * @param parameters [num_dimensions] num_parameters - policy parameters to execute
      * @param costs Vector of num_time_steps, state space cost per timestep (do not include control costs)
      * @param weighted_feature_values num_time_steps x num_features matrix of weighted feature values per time step
@@ -77,14 +78,15 @@ public:
                          int thread_id,
                          bool compute_gradients,
                          std::vector<Eigen::VectorXd>& gradients,
-                         bool& validity) = 0;
+                         bool& validity) const = 0;
 
     /**
      * Filters the given parameters - for eg, clipping of joint limits
+     * Must be thread-safe!
      * @param parameters
      * @return false if no filtering was done
      */
-    virtual bool filter(std::vector<Eigen::VectorXd>& parameters, int thread_id){return false;};
+    virtual bool filter(std::vector<Eigen::VectorXd>& parameters, int thread_id) const {return false;};
 
     /**
      * Get the Policy object of this Task

@@ -459,9 +459,9 @@ double CovariantMovementPrimitive::getMovementDt() const
   return movement_dt_;
 }
 
-void CovariantMovementPrimitive::getDifferentiationMatrix(int derivative_number, Eigen::MatrixXd& differentiation_matrix) const
+const Eigen::MatrixXd& CovariantMovementPrimitive::getDifferentiationMatrix(int derivative_number) const
 {
-  differentiation_matrix = differentiation_matrices_[derivative_number];
+  return differentiation_matrices_[derivative_number];
 }
 
 }

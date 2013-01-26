@@ -59,9 +59,9 @@ public:
                        int thread_id,
                        bool compute_gradients,
                        std::vector<Eigen::VectorXd>& gradients,
-                       bool& validity);
+                       bool& validity) const;
 
-  virtual bool filter(std::vector<Eigen::VectorXd>& parameters, int thread_id);
+  virtual bool filter(std::vector<Eigen::VectorXd>& parameters, int thread_id) const;
 
   /**
    * Get the Policy object of this Task
@@ -103,19 +103,25 @@ private:
   bool save_cost_function_;
   double resolution_;
   std::vector<Obstacle> obstacles_;
+
+  Eigen::MatrixXd vel_diff_matrix_;
+  Eigen::MatrixXd acc_diff_matrix_;
+
+  std::vector<Eigen::VectorXd> initial_trajectory_;
+
   void readParameters();
   void writeCostFunction();
 
-  double evaluateMapCost(double x, double y);
-  void evaluateMapGradients(double x, double y, double& gx, double& gy);
-  double evaluateCost(double x, double y, double vx, double vy);
+  double evaluateMapCost(double x, double y) const;
+  void evaluateMapGradients(double x, double y, double& gx, double& gy) const;
+  double evaluateCost(double x, double y, double vx, double vy) const;
   double evaluateCostWithGradients(double x, double y, double vx, double vy,
                                   bool compute_gradients,
-                                  double ax, double ay, double& gx, double& gy);
-  double evaluateCostPath(double x1, double y1, double x2, double y2, double vx, double vy);
+                                  double ax, double ay, double& gx, double& gy) const;
+  double evaluateCostPath(double x1, double y1, double x2, double y2, double vx, double vy) const;
   double evaluateCostPathWithGradients(double x1, double y1, double x2, double y2, double vx, double vy,
                                        bool compute_gradients,
-                                       double ax, double ay, double& gx, double& gy);
+                                       double ax, double ay, double& gx, double& gy) const;
 
 };
 
