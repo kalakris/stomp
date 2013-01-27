@@ -14,7 +14,9 @@ catkin_package(
 )
 
 add_library(stomp_moveit_interface
+  src/cost_features/stomp_cost_feature.cpp
   src/stomp_planner.cpp
+  src/stomp_trajectory.cpp
 #  src/cost_features/cartesian_orientation_feature.cpp
 #  src/cost_features/cartesian_vel_acc_feature.cpp
 #  src/cost_features/collision_feature.cpp

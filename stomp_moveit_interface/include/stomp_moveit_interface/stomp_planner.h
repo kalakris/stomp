@@ -9,6 +9,10 @@
 #define STOMP_PLANNER_H_
 
 #include <moveit/planning_interface/planning_interface.h>
+#include <moveit/collision_detection/collision_robot.h>
+#include <moveit/collision_detection/collision_world.h>
+#include <moveit/collision_distance_field/collision_world_distance_field.h>
+#include <moveit/collision_distance_field/collision_robot_distance_field.h>
 
 namespace stomp_moveit_interface
 {
@@ -22,7 +26,7 @@ public:
   virtual void init(const kinematic_model::KinematicModelConstPtr& model);
 
   /// Get a short string that identifies the planning interface
-  virtual std::string getDescription(void) const { return "StompPlanner"; }
+  virtual std::string getDescription(void) const { return "STOMP"; }
 
   /// Get the names of the known planning algorithms (values that can be filled as planner_id in the planning request)
   virtual void getPlanningAlgorithms(std::vector<std::string> &algs) const;
@@ -41,6 +45,18 @@ public:
 
   /// Request termination, if a solve() function is currently computing plans
   virtual void terminate(void) const;
+
+private:
+  ros::NodeHandle node_handle_;
+
+  //boost::shared_ptr<stomp::STOMP> stomp_;
+  //std::map<std::string, boost::shared_ptr<StompOptimizationTask> > stomp_tasks_;
+  kinematic_model::KinematicModelConstPtr kinematic_model_;
+
+  boost::shared_ptr<const collision_detection::CollisionRobot> collision_robot_; /**< standard robot collision checker */
+  boost::shared_ptr<const collision_detection::CollisionWorld> collision_world_; /**< standard robot -> world collision checker */
+  boost::shared_ptr<const collision_detection::CollisionRobotDistanceField> collision_robot_df_;    /**< distance field robot collision checker */
+  boost::shared_ptr<const collision_detection::CollisionWorldDistanceField> collision_world_df_;    /**< distance field robot -> world collision checker */
 
 };
 

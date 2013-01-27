@@ -5,23 +5,31 @@
  *      Author: kalakris
  */
 
-#include <stomp_ros_interface/stomp_optimization_task.h>
-#include <usc_utilities/param_server.h>
-#include <usc_utilities/assert.h>
-#include <usc_utilities/file_io.h>
+#include <stomp_moveit_interface/stomp_optimization_task.h>
 #include <stomp/stomp_utils.h>
-#include <stomp_ros_interface/stomp_cost_function_input.h>
 #include <iostream>
 #include <fstream>
 
-namespace stomp_ros_interface
+using namespace stomp;
+
+namespace stomp_moveit_interface
 {
 
 StompOptimizationTask::StompOptimizationTask(ros::NodeHandle node_handle,
-                                             const std::string& planning_group):
+                                             const std::string& planning_group,
+                                             kinematic_model::KinematicModelConstPtr kinematic_model,
+                                             boost::shared_ptr<const collision_detection::CollisionRobot> collision_robot,
+                                             boost::shared_ptr<const collision_detection::CollisionWorld> collision_world,
+                                             boost::shared_ptr<const collision_detection::CollisionRobotDistanceField> collision_robot_df,
+                                             boost::shared_ptr<const collision_detection::CollisionWorldDistanceField> collision_world_df):
     node_handle_(node_handle),
     planning_group_name_(planning_group),
-    feature_loader_("stomp_ros_interface", "stomp_ros_interface::StompCostFeature")
+    feature_loader_("stomp_moveit_interface", "stomp_moveit_interface::StompCostFeature"),
+    kinematic_model_(kinematic_model),
+    collision_robot_(collision_robot),
+    collision_world_(collision_world),
+    collision_robot_df_(collision_robot_df),
+    collision_world_df_(collision_world_df)
 {
   viz_pub_ = node_handle_.advertise<visualization_msgs::MarkerArray>("robot_model_array", 10, true);
   max_rollout_markers_published_ = 0;
@@ -35,31 +43,6 @@ bool StompOptimizationTask::initialize(int num_threads, int num_rollouts)
 {
   num_threads_ = num_threads;
   num_rollouts_ = num_rollouts;
-  usc_utilities::read(node_handle_, "reference_frame", reference_frame_);
-  usc_utilities::read(node_handle_, "num_feature_basis_functions", num_feature_basis_functions_);
-
-  robot_model_.reset(new StompRobotModel(node_handle_));
-  robot_model_->init(reference_frame_);
-  planning_group_ = robot_model_->getPlanningGroup(planning_group_name_);
-  double max_radius_clearance = robot_model_->getMaxRadiusClearance();
-  num_dimensions_ = planning_group_->num_joints_;
-
-  // initialize per-thread-data
-  per_rollout_data_.resize(num_rollouts_+1);
-  for (int i=0; i<num_rollouts_+1; ++i)
-  {
-    per_rollout_data_[i].collision_models_.reset(new planning_environment::CollisionModels("/robot_description"));
-    per_rollout_data_[i].collision_models_->disableCollisionsForNonUpdatedLinks(planning_group_name_, true);
-  }
-
-  //noisy_rollout_data_.resize(num_rollouts_);
-
-  collision_space_.reset(new StompCollisionSpace(node_handle_));
-  collision_space_->init(max_radius_clearance, reference_frame_);
-
-  control_cost_weight_ = 0.0;
-
-  last_executed_rollout_ = -1;
 
   return true;
 }
@@ -68,7 +51,7 @@ void StompOptimizationTask::setFeaturesFromXml(const XmlRpc::XmlRpcValue& featur
 {
   ROS_ASSERT (features_xml.getType() == XmlRpc::XmlRpcValue::TypeArray);
 
-  std::vector<boost::shared_ptr<learnable_cost_function::Feature> > features;
+  std::vector<boost::shared_ptr<StompCostFeature> > features;
 
   for (int i=0; i<features_xml.size(); ++i)
   {
@@ -91,7 +74,9 @@ void StompOptimizationTask::setFeaturesFromXml(const XmlRpc::XmlRpcValue& featur
       ROS_BREAK();
     }
 
-    feature->initialize(feature_xml, planning_group_);
+    STOMP_VERIFY(feature->initialize(feature_xml,
+                                     collision_robot_, collision_world_,
+                                     collision_robot_df_, collision_world_df_));
     features.push_back(feature);
   }
 
@@ -99,7 +84,7 @@ void StompOptimizationTask::setFeaturesFromXml(const XmlRpc::XmlRpcValue& featur
 
 }
 
-void StompOptimizationTask::setFeatures(std::vector<boost::shared_ptr<learnable_cost_function::Feature> >& features)
+void StompOptimizationTask::setFeatures(std::vector<boost::shared_ptr<StompCostFeature> >& features)
 {
   // create the feature set
   feature_set_.reset(new learnable_cost_function::FeatureSet());
@@ -435,82 +420,78 @@ void StompOptimizationTask::setControlCostWeight(double w)
   control_cost_weight_ = w;
 }
 
-void StompOptimizationTask::setPlanningScene(const arm_navigation_msgs::PlanningScene& scene)
-{
-  collision_space_->setPlanningScene(scene);
-  for (unsigned int i=0; i<per_rollout_data_.size(); ++i)
-  {
-    if (per_rollout_data_[i].collision_models_->isPlanningSceneSet())
-      per_rollout_data_[i].collision_models_->revertPlanningScene(per_rollout_data_[i].kinematic_state_);
-    planning_models::KinematicState* kin_state = per_rollout_data_[i].collision_models_->setPlanningScene(scene);
-    per_rollout_data_[i].kinematic_state_ = kin_state;
-    per_rollout_data_[i].joint_state_group_ = kin_state->getJointStateGroup(planning_group_name_);
-  }
-}
+//void StompOptimizationTask::setPlanningScene(const planning_scene::PlanningSceneConstPtr& scene)
+//{
+//  collision_space_->setPlanningScene(scene);
+//  for (unsigned int i=0; i<per_rollout_data_.size(); ++i)
+//  {
+//    if (per_rollout_data_[i].collision_models_->isPlanningSceneSet())
+//      per_rollout_data_[i].collision_models_->revertPlanningScene(per_rollout_data_[i].kinematic_state_);
+//    planning_models::KinematicState* kin_state = per_rollout_data_[i].collision_models_->setPlanningScene(scene);
+//    per_rollout_data_[i].kinematic_state_ = kin_state;
+//    per_rollout_data_[i].joint_state_group_ = kin_state->getJointStateGroup(planning_group_name_);
+//  }
+//}
 
-void StompOptimizationTask::setMotionPlanRequest(const arm_navigation_msgs::MotionPlanRequest& request)
+void StompOptimizationTask::setMotionPlanRequest(const planning_scene::PlanningSceneConstPtr& scene,
+                                                 const moveit_msgs::MotionPlanRequest& request)
 {
-  // TODO this is obviously not complete
+  control_cost_weight_ = 0.0;
+  last_executed_rollout_ = -1;
+  reference_frame_ = kinematic_model_->getModelFrame();
+
+  // read some params
+  STOMP_VERIFY(node_handle_.getParam("num_feature_basis_functions", num_feature_basis_functions_));
+  STOMP_VERIFY(node_handle_.getParam("trajectory_duration", movement_duration_));
+  STOMP_VERIFY(node_handle_.getParam("num_time_steps", num_time_steps_));
+
+  dt_ = movement_duration_ / (num_time_steps_-1.0);
+  num_time_steps_all_ = num_time_steps_ + 2*stomp::TRAJECTORY_PADDING;
+
+  if (!kinematic_model_->hasJointModelGroup(planning_group_name_))
+  {
+    ROS_ERROR("STOMP: Planning group %s doesn't exist!", planning_group_name_.c_str());
+    return false;
+  }
+
+  num_dimensions_ = kinematic_model_->getJointModelGroup(planning_group_name_)->getVariableCount();
 
   // get the start and goal positions from the message
-  std::vector<double> start(num_dimensions_, 0.0);
-  std::vector<double> goal(num_dimensions_, 0.0);
-
-  const StompRobotModel::StompPlanningGroup* group = planning_group_;
-  start = group->getJointArrayFromJointState(request.start_state.joint_state);
-  goal = group->getJointArrayFromGoalConstraints(request.goal_constraints);
-
-  start_joints_ = start;
-  goal_joints_ = goal;
-//  ROS_INFO("start, goal:");
-//  for (int i=0; i<num_dimensions_; ++i)
-//  {
-//    ROS_INFO("%f -> %f", start[i], goal[i]);
-//  }
-
-  movement_duration_ = request.expected_path_duration.toSec();
-  num_time_steps_ = lrint(movement_duration_/request.expected_path_dt.toSec()) + 1;
-  if (num_time_steps_ < 10)
-    num_time_steps_ = 10; // may be a hack, but we need some room to plan in :)
-  if (num_time_steps_ > 500)
-    num_time_steps_ = 500; // may start to get too slow / run out of memory at this point
-  dt_ = movement_duration_ / (num_time_steps_-1.0);
-
-  for (unsigned int i=0; i<per_rollout_data_.size(); ++i)
+  kinematic_state::KinematicState kinematic_state(kinematic_model_);
+  kinematic_state.setStateValues(request.start_state.joint_state);
+  kinematic_state.getJointStateGroup(planning_group_name_)->getVariableValues(start_joints_);
+  std::map<std::string, double> goal_joint_map;
+  for (size_t i=0; i<request.goal_constraints[0].joint_constraints; ++i)
   {
-    per_rollout_data_[i].task_ = this;
-    per_rollout_data_[i].cost_function_input_.resize(num_time_steps_);
-    for (int t=0; t<num_time_steps_; ++t)
-    {
-      per_rollout_data_[i].cost_function_input_[t].reset(new StompCostFunctionInput(
-          collision_space_, robot_model_, planning_group_));
-    }
-    per_rollout_data_[i].features_ = Eigen::MatrixXd(num_time_steps_, num_split_features_);
+    goal_joint_map[request.goal_constraints[0].joint_constraints[i].joint_name] =
+        request.goal_constraints[0].joint_constraints[i].position;
+  }
+  kinematic_state.setStateValues(goal_joint_map);
+  kinematic_state.getJointStateGroup(planning_group_name_)->getVariableValues(goal_joints_);
 
-    per_rollout_data_[i].tmp_joint_angles_.resize(num_dimensions_, Eigen::VectorXd(num_time_steps_));
-    per_rollout_data_[i].tmp_joint_angles_vel_.resize(num_dimensions_, Eigen::VectorXd(num_time_steps_));
-    per_rollout_data_[i].tmp_joint_angles_acc_.resize(num_dimensions_, Eigen::VectorXd(num_time_steps_));
-    std::vector<Eigen::VectorXd> v(3, Eigen::VectorXd(num_time_steps_));
-    int nc = planning_group_->collision_points_.size();
-    per_rollout_data_[i].tmp_collision_point_pos_.resize(nc, v);
-    per_rollout_data_[i].tmp_collision_point_vel_.resize(nc, v);
-    per_rollout_data_[i].tmp_collision_point_acc_.resize(nc, v);
-    per_rollout_data_[i].fk_solver_ = planning_group_->getNewFKSolver();
+  // initialize all trajectories
+  trajectories_.resize(num_rollouts_+1);
+  for (int i=0; i<num_rollouts_+1; ++i)
+  {
+    trajectories_[i].reset(new StompTrajectory(num_time_steps_all_, kinematic_model_, planning_group_name_));
+
+    trajectories_[i].features_ = Eigen::MatrixXd(num_time_steps_all_, num_split_features_);
+    trajectories_[i].weighted_features_ = Eigen::MatrixXd(num_time_steps_all_, num_split_features_);
+    trajectories_[i].costs_ = Eigen::VectorXd(num_time_steps_all_);
   }
 
   // create the derivative costs
   std::vector<Eigen::MatrixXd> derivative_costs(num_dimensions_,
-                                                Eigen::MatrixXd::Zero(num_time_steps_ + 2*stomp::TRAJECTORY_PADDING, stomp::NUM_DIFF_RULES));
+                                                Eigen::MatrixXd::Zero(num_time_steps_all_, stomp::NUM_DIFF_RULES));
   std::vector<Eigen::VectorXd> initial_trajectory(num_dimensions_,
-                                                  Eigen::VectorXd::Zero(num_time_steps_ + 2*stomp::TRAJECTORY_PADDING));
+                                                  Eigen::VectorXd::Zero(num_time_steps_all_));
 
   for (int d=0; d<num_dimensions_; ++d)
   {
-    //derivative_costs[d].col(stomp::STOMP_VELOCITY) = Eigen::VectorXd::Ones(num_time_steps_ + 2*stomp::TRAJECTORY_PADDING);
-    derivative_costs[d].col(stomp::STOMP_ACCELERATION) = Eigen::VectorXd::Ones(num_time_steps_ + 2*stomp::TRAJECTORY_PADDING);
-    initial_trajectory[d] = Eigen::VectorXd::Zero(num_time_steps_ + 2*stomp::TRAJECTORY_PADDING);
-    initial_trajectory[d].head(stomp::TRAJECTORY_PADDING) = Eigen::VectorXd::Ones(stomp::TRAJECTORY_PADDING) * start[d];
-    initial_trajectory[d].tail(stomp::TRAJECTORY_PADDING) = Eigen::VectorXd::Ones(stomp::TRAJECTORY_PADDING) * goal[d];
+    derivative_costs[d].col(stomp::STOMP_ACCELERATION) = Eigen::VectorXd::Ones(num_time_steps_all_);
+    initial_trajectory[d] = Eigen::VectorXd::Zero(num_time_steps_all_);
+    initial_trajectory[d].head(stomp::TRAJECTORY_PADDING) = Eigen::VectorXd::Ones(stomp::TRAJECTORY_PADDING) * start_joints_[d];
+    initial_trajectory[d].tail(stomp::TRAJECTORY_PADDING) = Eigen::VectorXd::Ones(stomp::TRAJECTORY_PADDING) * goal_joints_[d];
   }
 
   policy_.reset(new stomp::CovariantMovementPrimitive());
@@ -529,7 +510,6 @@ void StompOptimizationTask::setMotionPlanRequest(const arm_navigation_msgs::Moti
     // compute feature splits and normalizations
     double p = double(t) / double(num_time_steps_-1);
     double sum = 0.0;
-//    printf("t = %2d, ", t);
     for (int i=0; i<num_feature_basis_functions_; ++i)
     {
       feature_split_magnitudes[i] = (1.0 / (feature_basis_stddev_[i] * sqrt(2.0*M_PI))) *
@@ -540,10 +520,7 @@ void StompOptimizationTask::setMotionPlanRequest(const arm_navigation_msgs::Moti
     {
       feature_split_magnitudes[i] /= sum;
       feature_basis_functions_(t, i) = feature_split_magnitudes[i];
-//      printf("f%d = %f, ", i, feature_split_magnitudes[i]);
     }
-//    printf("\n");
-
   }
   //policy_->writeToFile(std::string("/tmp/test.txt"));
 
@@ -676,121 +653,121 @@ void StompOptimizationTask::setToMinControlCostTrajectory()
   policy_->setToMinControlCost();
 }
 
-void StompOptimizationTask::getNoisyRolloutData(std::vector<PerRolloutData>& noisy_rollouts)
+void StompOptimizationTask::getNoisyRolloutData(std::vector<StompTrajectory>& noisy_rollouts)
 {
   noisy_rollouts.resize(num_rollouts_);
   for (int i=0; i<num_rollouts_; ++i)
-    noisy_rollouts[i] = per_rollout_data_[i];
+    noisy_rollouts[i] = trajectories_[i];
 }
 
-void StompOptimizationTask::getNoiselessRolloutData(PerRolloutData& noiseless_rollout)
+void StompOptimizationTask::getNoiselessRolloutData(StompTrajectory& noiseless_rollout)
 {
-  noiseless_rollout = per_rollout_data_[num_rollouts_];
+  noiseless_rollout = trajectories_[num_rollouts_];
 }
 
-void StompOptimizationTask::publishCollisionModelMarkers(int rollout_number)
-{
-  int rollout_id = num_rollouts_;
-  if (rollout_number >= 0)
-    rollout_id = rollout_number;
-  PerRolloutData* data = &per_rollout_data_[rollout_id];
+//void StompOptimizationTask::publishCollisionModelMarkers(int rollout_number)
+//{
+//  int rollout_id = num_rollouts_;
+//  if (rollout_number >= 0)
+//    rollout_id = rollout_number;
+//  PerRolloutData* data = &per_rollout_data_[rollout_id];
+//
+//  // animate
+//  for (unsigned int i=0; i<data->cost_function_input_.size(); ++i)
+//  {
+//    data->cost_function_input_[i]->publishVizMarkers(ros::Time::now(), viz_pub_);
+//    ros::Duration(dt_).sleep();
+//  }
+//}
 
-  // animate
-  for (unsigned int i=0; i<data->cost_function_input_.size(); ++i)
-  {
-    data->cost_function_input_[i]->publishVizMarkers(ros::Time::now(), viz_pub_);
-    ros::Duration(dt_).sleep();
-  }
-}
+//void StompOptimizationTask::publishTrajectoryMarkers(ros::Publisher& viz_pub)
+//{
+//  for (int i=0; i<=last_executed_rollout_; ++i)
+//  {
+//    per_rollout_data_[i].publishMarkers(viz_pub, i, false, reference_frame_);
+//  }
+//  per_rollout_data_[num_rollouts_].publishMarkers(viz_pub, 0, true, reference_frame_);
+//
+//  // publish empty markers to the remaining IDs
+//  for (int i=last_executed_rollout_+1; i<=max_rollout_markers_published_; ++i)
+//  {
+//    visualization_msgs::Marker marker;
+//    marker.header.frame_id = reference_frame_;
+//    marker.header.stamp = ros::Time();
+//    marker.ns = "noisy";
+//    marker.id = i;
+//    marker.type = visualization_msgs::Marker::LINE_STRIP;
+//    marker.action = visualization_msgs::Marker::DELETE;
+//    viz_pub.publish(marker);
+//  }
+//
+//  if (max_rollout_markers_published_ < (int)last_executed_rollout_)
+//    max_rollout_markers_published_ = last_executed_rollout_;
+//}
 
-void StompOptimizationTask::publishTrajectoryMarkers(ros::Publisher& viz_pub)
-{
-  for (int i=0; i<=last_executed_rollout_; ++i)
-  {
-    per_rollout_data_[i].publishMarkers(viz_pub, i, false, reference_frame_);
-  }
-  per_rollout_data_[num_rollouts_].publishMarkers(viz_pub, 0, true, reference_frame_);
+//void StompOptimizationTask::PerRolloutData::publishMarkers(ros::Publisher& viz_pub, int id, bool noiseless, const std::string& reference_frame)
+//{
+//  std_msgs::ColorRGBA color;
+//  double size=0.0;
+//  std::string ns;
+//  if (noiseless)
+//  {
+//    color.a = 1.0;
+//    color.r = 0.0;
+//    color.g = 1.0;
+//    color.b = 1.0;
+//    size = 0.02;
+//    ns="noiseless";
+//  }
+//  else
+//  {
+//    color.a = 0.5;
+//    color.r = 0.0;
+//    color.g = 0.0;
+//    color.b = 1.0;
+//    size = 0.003;
+//    ns = "noisy";
+//  }
+//
+//  publishMarkers(viz_pub, id, ns, color, size, reference_frame);
+//}
 
-  // publish empty markers to the remaining IDs
-  for (int i=last_executed_rollout_+1; i<=max_rollout_markers_published_; ++i)
-  {
-    visualization_msgs::Marker marker;
-    marker.header.frame_id = reference_frame_;
-    marker.header.stamp = ros::Time();
-    marker.ns = "noisy";
-    marker.id = i;
-    marker.type = visualization_msgs::Marker::LINE_STRIP;
-    marker.action = visualization_msgs::Marker::DELETE;
-    viz_pub.publish(marker);
-  }
-
-  if (max_rollout_markers_published_ < (int)last_executed_rollout_)
-    max_rollout_markers_published_ = last_executed_rollout_;
-}
-
-void StompOptimizationTask::PerRolloutData::publishMarkers(ros::Publisher& viz_pub, int id, bool noiseless, const std::string& reference_frame)
-{
-  std_msgs::ColorRGBA color;
-  double size=0.0;
-  std::string ns;
-  if (noiseless)
-  {
-    color.a = 1.0;
-    color.r = 0.0;
-    color.g = 1.0;
-    color.b = 1.0;
-    size = 0.02;
-    ns="noiseless";
-  }
-  else
-  {
-    color.a = 0.5;
-    color.r = 0.0;
-    color.g = 0.0;
-    color.b = 1.0;
-    size = 0.003;
-    ns = "noisy";
-  }
-
-  publishMarkers(viz_pub, id, ns, color, size, reference_frame);
-}
-
-void StompOptimizationTask::PerRolloutData::publishMarkers(ros::Publisher& viz_pub, int id, const std::string& ns,
-                                                           const std_msgs::ColorRGBA& color, double size,
-                                                           const std::string& reference_frame)
-{
-  visualization_msgs::Marker marker;
-  marker.header.frame_id = reference_frame;
-  marker.header.stamp = ros::Time();
-  marker.ns = ns;
-  marker.id = id;
-  marker.type = visualization_msgs::Marker::LINE_STRIP;
-  marker.action = visualization_msgs::Marker::ADD;
-  marker.points.resize(cost_function_input_.size());
-  marker.colors.resize(cost_function_input_.size());
-  for (unsigned int t=0; t<cost_function_input_.size(); ++t)
-  {
-    KDL::Frame& v = cost_function_input_[t]->segment_frames_
-        [task_->planning_group_->end_effector_segment_index_];
-    marker.points[t].x = v.p.x();
-    marker.points[t].y = v.p.y();
-    marker.points[t].z = v.p.z();
-    marker.colors[t] = color;
-  }
-  marker.scale.x = size;
-  marker.pose.position.x = 0;
-  marker.pose.position.y = 0;
-  marker.pose.position.z = 0;
-  marker.pose.orientation.x = 0.0;
-  marker.pose.orientation.y = 0.0;
-  marker.pose.orientation.z = 0.0;
-  marker.pose.orientation.w = 1.0;
-  marker.color.a = 1.0;
-  marker.color.r = 0.0;
-  marker.color.g = 1.0;
-  marker.color.b = 0.0;
-  viz_pub.publish(marker);
-}
+//void StompOptimizationTask::PerRolloutData::publishMarkers(ros::Publisher& viz_pub, int id, const std::string& ns,
+//                                                           const std_msgs::ColorRGBA& color, double size,
+//                                                           const std::string& reference_frame)
+//{
+//  visualization_msgs::Marker marker;
+//  marker.header.frame_id = reference_frame;
+//  marker.header.stamp = ros::Time();
+//  marker.ns = ns;
+//  marker.id = id;
+//  marker.type = visualization_msgs::Marker::LINE_STRIP;
+//  marker.action = visualization_msgs::Marker::ADD;
+//  marker.points.resize(cost_function_input_.size());
+//  marker.colors.resize(cost_function_input_.size());
+//  for (unsigned int t=0; t<cost_function_input_.size(); ++t)
+//  {
+//    KDL::Frame& v = cost_function_input_[t]->segment_frames_
+//        [task_->planning_group_->end_effector_segment_index_];
+//    marker.points[t].x = v.p.x();
+//    marker.points[t].y = v.p.y();
+//    marker.points[t].z = v.p.z();
+//    marker.colors[t] = color;
+//  }
+//  marker.scale.x = size;
+//  marker.pose.position.x = 0;
+//  marker.pose.position.y = 0;
+//  marker.pose.position.z = 0;
+//  marker.pose.orientation.x = 0.0;
+//  marker.pose.orientation.y = 0.0;
+//  marker.pose.orientation.z = 0.0;
+//  marker.pose.orientation.w = 1.0;
+//  marker.color.a = 1.0;
+//  marker.color.r = 0.0;
+//  marker.color.g = 1.0;
+//  marker.color.b = 0.0;
+//  viz_pub.publish(marker);
+//}
 
 
 void StompOptimizationTask::onEveryIteration()
@@ -805,10 +782,10 @@ void StompOptimizationTask::setTrajectoryVizPublisher(ros::Publisher& viz_trajec
   viz_trajectory_pub_ = viz_trajectory_pub;
 }
 
-const StompRobotModel::StompPlanningGroup* StompOptimizationTask::getPlanningGroup()
-{
-  return planning_group_;
-}
+//const StompRobotModel::StompPlanningGroup* StompOptimizationTask::getPlanningGroup()
+//{
+//  return planning_group_;
+//}
 
 int StompOptimizationTask::getNumFeatures()
 {

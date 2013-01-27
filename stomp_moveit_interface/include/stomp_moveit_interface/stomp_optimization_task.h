@@ -9,33 +9,31 @@
 #define STOMP_OPTIMIZATION_TASK_H_
 
 #include <stomp/task.h>
-#include <stomp_ros_interface/stomp_robot_model.h>
-//#include <stomp_ros_interface/stomp_cost_function_input.h>
-#include <arm_navigation_msgs/PlanningScene.h>
-#include <arm_navigation_msgs/MotionPlanRequest.h>
-#include <learnable_cost_function/feature_set.h>
-#include <planning_environment/models/collision_models_interface.h>
-#include <stomp_ros_interface/stomp_collision_space.h>
 #include <pluginlib/class_loader.h>
-#include <stomp_ros_interface/cost_features/stomp_cost_feature.h>
+#include <stomp_moveit_interface/cost_features/stomp_cost_feature.h>
+#include <stomp_moveit_interface/stomp_trajectory.h>
+#include <moveit/planning_scene/planning_scene.h>
+#include <moveit_msgs/MotionPlanRequest.h>
 
-namespace stomp_ros_interface
+namespace stomp_moveit_interface
 {
-
-class StompCostFunctionInput;
 
 class StompOptimizationTask: public stomp::Task
 {
-  friend class StompCostFunctionInput;
 
 public:
   StompOptimizationTask(ros::NodeHandle node_handle,
-                        const std::string& planning_group);
+                        const std::string& planning_group,
+                        kinematic_model::KinematicModelConstPtr kinematic_model,
+                        boost::shared_ptr<const collision_detection::CollisionRobot> collision_robot,
+                        boost::shared_ptr<const collision_detection::CollisionWorld> collision_world,
+                        boost::shared_ptr<const collision_detection::CollisionRobotDistanceField> collision_robot_df,
+                        boost::shared_ptr<const collision_detection::CollisionWorldDistanceField> collision_world_df);
   virtual ~StompOptimizationTask();
 
   virtual bool initialize(int num_threads, int num_rollouts);
 
-  void setFeatures(std::vector<boost::shared_ptr<learnable_cost_function::Feature> >& features);
+  void setFeatures(std::vector<boost::shared_ptr<StompCostFeature> >& features);
   void setFeaturesFromXml(const XmlRpc::XmlRpcValue& config);
 
   virtual bool execute(std::vector<Eigen::VectorXd>& parameters,
@@ -58,9 +56,10 @@ public:
 
   void computeCosts(const Eigen::MatrixXd& features, Eigen::VectorXd& costs, Eigen::MatrixXd& weighted_feature_values) const;
 
-  void setPlanningScene(const arm_navigation_msgs::PlanningScene& scene);
-
-  void setMotionPlanRequest(const arm_navigation_msgs::MotionPlanRequest& request);
+  void setMotionPlanRequest(const planning_scene::PlanningSceneConstPtr& planning_scene,
+                   const moveit_msgs::MotionPlanRequest &req);
+//  void setPlanningScene(const planning_scene::PlanningSceneConstPtr& scene);
+//  void setMotionPlanRequest(const moveit_msgs::MotionPlanRequest& request);
 
   void setInitialTrajectory(const std::vector<sensor_msgs::JointState>& joint_states);
   void getTrajectory(std::vector<sensor_msgs::JointState>& joint_states);
@@ -81,39 +80,8 @@ public:
 
   int getNumFeatures();
 
-  struct PerRolloutData
-  {
-    boost::shared_ptr<planning_environment::CollisionModels> collision_models_;
-    planning_models::KinematicState* kinematic_state_;
-    planning_models::KinematicState::JointStateGroup* joint_state_group_;
-
-    //const StompRobotModel::StompPlanningGroup* planning_group_;
-    const StompOptimizationTask* task_;
-
-    std::vector<boost::shared_ptr<StompCostFunctionInput> > cost_function_input_; // one per timestep
-
-    Eigen::MatrixXd features_; // num_time x num_features
-    Eigen::MatrixXd weighted_features_; // num_time x num_features
-    Eigen::VectorXd costs_;
-
-    // temp data structures for differentiation
-    std::vector<Eigen::VectorXd> tmp_joint_angles_;     // one per dimension
-    std::vector<Eigen::VectorXd> tmp_joint_angles_vel_; // one per dimension
-    std::vector<Eigen::VectorXd> tmp_joint_angles_acc_; // one per dimension
-    std::vector<std::vector<Eigen::VectorXd> > tmp_collision_point_pos_; // [collision_point_index][x/y/z]
-    std::vector<std::vector<Eigen::VectorXd> > tmp_collision_point_vel_; // [collision_point_index][x/y/z]
-    std::vector<std::vector<Eigen::VectorXd> > tmp_collision_point_acc_; // [collision_point_index][x/y/z]
-
-    boost::shared_ptr<KDL::TreeFkSolverJointPosAxisPartial> fk_solver_;
-    void differentiate(double dt);
-    void publishMarkers(ros::Publisher& viz_pub, int id, bool noiseless, const std::string& reference_frame);
-    void publishMarkers(ros::Publisher& viz_pub, int id, const std::string& ns,
-                        const std_msgs::ColorRGBA& color, double size, const std::string& reference_frame);
-    boost::shared_ptr<PerRolloutData> clone();
-  };
-
-  void getNoisyRolloutData(std::vector<PerRolloutData>& noisy_rollouts);
-  void getNoiselessRolloutData(PerRolloutData& noiseless_rollout);
+  void getNoisyRolloutData(std::vector<StompTrajectory>& noisy_rollouts);
+  void getNoiselessRolloutData(StompTrajectory& noiseless_rollout);
 
   virtual bool getPolicy(boost::shared_ptr<stomp::CovariantMovementPrimitive>& policy);
 
@@ -125,19 +93,13 @@ public:
   virtual void onEveryIteration();
   void setTrajectoryVizPublisher(ros::Publisher& viz_trajectory_pub);
 
-  const StompRobotModel::StompPlanningGroup* getPlanningGroup();
-
+  //const StompRobotModel::StompPlanningGroup* getPlanningGroup();
 
 private:
-  boost::shared_ptr<StompRobotModel> robot_model_;
-  const StompRobotModel::StompPlanningGroup* planning_group_;
-
   boost::shared_ptr<stomp::CovariantMovementPrimitive> policy_;
-  boost::shared_ptr<learnable_cost_function::FeatureSet> feature_set_;
+  boost::shared_ptr<StompCostFeature> feature_set_;
   double control_cost_weight_;
-  //std::vector<PerThreadData> per_thread_data_;
-  std::vector<PerRolloutData> per_rollout_data_;
-  boost::shared_ptr<StompCollisionSpace> collision_space_;
+  std::vector<boost::shared_ptr<StompTrajectory> > trajectories_;
   ros::NodeHandle node_handle_;
 
   Eigen::VectorXd feature_weights_;
@@ -147,6 +109,7 @@ private:
   int num_threads_;
   int num_rollouts_;
   int num_time_steps_;
+  int num_time_steps_all_; // includes padding at the start and end
   int num_dimensions_;
   double movement_duration_;
   double dt_;
@@ -172,7 +135,13 @@ private:
 
   pluginlib::ClassLoader<StompCostFeature> feature_loader_;
 
+  kinematic_model::KinematicModelConstPtr kinematic_model_;
+  boost::shared_ptr<const collision_detection::CollisionRobot> collision_robot_; /**< standard robot collision checker */
+  boost::shared_ptr<const collision_detection::CollisionWorld> collision_world_; /**< standard robot -> world collision checker */
+  boost::shared_ptr<const collision_detection::CollisionRobotDistanceField> collision_robot_df_;    /**< distance field robot collision checker */
+  boost::shared_ptr<const collision_detection::CollisionWorldDistanceField> collision_world_df_;    /**< distance field robot -> world collision checker */
+
 };
 
-} /* namespace stomp_ros_interface */
+} /* namespace stomp_moveit_interface */
 #endif /* STOMP_OPTIMIZATION_TASK_H_ */
