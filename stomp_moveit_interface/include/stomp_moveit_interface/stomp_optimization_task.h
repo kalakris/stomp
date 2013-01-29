@@ -12,6 +12,7 @@
 #include <pluginlib/class_loader.h>
 #include <stomp_moveit_interface/cost_features/stomp_cost_feature.h>
 #include <stomp_moveit_interface/stomp_trajectory.h>
+#include <stomp_moveit_interface/feature_set.h>
 #include <moveit/planning_scene/planning_scene.h>
 #include <moveit_msgs/MotionPlanRequest.h>
 
@@ -47,16 +48,15 @@ public:
                        std::vector<Eigen::VectorXd>& gradients,
                        bool& validity);
 
-  virtual bool filter(std::vector<Eigen::VectorXd>& parameters, int thread_id);
+  virtual bool filter(std::vector<Eigen::VectorXd>& parameters, int rollout_id, int thread_id);
 
   void computeFeatures(std::vector<Eigen::VectorXd>& parameters,
-                       Eigen::MatrixXd& features,
                        int rollout_id,
                        bool& validity);
 
   void computeCosts(const Eigen::MatrixXd& features, Eigen::VectorXd& costs, Eigen::MatrixXd& weighted_feature_values) const;
 
-  void setMotionPlanRequest(const planning_scene::PlanningSceneConstPtr& planning_scene,
+  bool setMotionPlanRequest(const planning_scene::PlanningSceneConstPtr& planning_scene,
                    const moveit_msgs::MotionPlanRequest &req);
 //  void setPlanningScene(const planning_scene::PlanningSceneConstPtr& scene);
 //  void setMotionPlanRequest(const moveit_msgs::MotionPlanRequest& request);
@@ -80,8 +80,8 @@ public:
 
   int getNumFeatures();
 
-  void getNoisyRolloutData(std::vector<StompTrajectory>& noisy_rollouts);
-  void getNoiselessRolloutData(StompTrajectory& noiseless_rollout);
+  void getNoisyRolloutData(std::vector<boost::shared_ptr<const StompTrajectory> >& noisy_rollouts);
+  void getNoiselessRolloutData(boost::shared_ptr<const StompTrajectory>& noiseless_rollout);
 
   virtual bool getPolicy(boost::shared_ptr<stomp::CovariantMovementPrimitive>& policy);
 
@@ -97,7 +97,7 @@ public:
 
 private:
   boost::shared_ptr<stomp::CovariantMovementPrimitive> policy_;
-  boost::shared_ptr<StompCostFeature> feature_set_;
+  boost::shared_ptr<FeatureSet> feature_set_;
   double control_cost_weight_;
   std::vector<boost::shared_ptr<StompTrajectory> > trajectories_;
   ros::NodeHandle node_handle_;
@@ -136,6 +136,7 @@ private:
   pluginlib::ClassLoader<StompCostFeature> feature_loader_;
 
   kinematic_model::KinematicModelConstPtr kinematic_model_;
+
   boost::shared_ptr<const collision_detection::CollisionRobot> collision_robot_; /**< standard robot collision checker */
   boost::shared_ptr<const collision_detection::CollisionWorld> collision_world_; /**< standard robot -> world collision checker */
   boost::shared_ptr<const collision_detection::CollisionRobotDistanceField> collision_robot_df_;    /**< distance field robot collision checker */

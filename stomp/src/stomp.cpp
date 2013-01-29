@@ -55,7 +55,7 @@ STOMP::~STOMP()
 {
 }
 
-bool STOMP::initialize(ros::NodeHandle& node_handle, boost::shared_ptr<stomp::Task> task)
+bool STOMP::initialize(const ros::NodeHandle& node_handle, boost::shared_ptr<stomp::Task> task)
 {
   node_handle_ = node_handle;
   STOMP_VERIFY(readParameters());
@@ -147,7 +147,7 @@ bool STOMP::doGenRollouts(int iteration_number)
   bool filtered = false;
   for (unsigned int r=0; r<rollouts_.size(); ++r)
   {
-    if (task_->filter(rollouts_[r], 0))
+    if (task_->filter(rollouts_[r], r, 0))
       filtered = true;
   }
   if (filtered)

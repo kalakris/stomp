@@ -8,11 +8,10 @@
 #ifndef EXACT_COLLISION_FEATURE_H_
 #define EXACT_COLLISION_FEATURE_H_
 
-#include <stomp_ros_interface/cost_features/stomp_cost_feature.h>
-#include <planning_environment/models/collision_models.h>
+#include <stomp_moveit_interface/cost_features/stomp_cost_feature.h>
 #include <std_msgs/ColorRGBA.h>
 
-namespace stomp_ros_interface
+namespace stomp_moveit_interface
 {
 
 class ExactCollisionFeature: public StompCostFeature
@@ -21,22 +20,31 @@ public:
   ExactCollisionFeature();
   virtual ~ExactCollisionFeature();
 
-  virtual bool initialize(XmlRpc::XmlRpcValue& config, const StompRobotModel::StompPlanningGroup* planning_group);
   virtual int getNumValues() const;
-  virtual void computeValuesAndGradients(boost::shared_ptr<learnable_cost_function::Input const> input, std::vector<double>& feature_values,
-                                         bool compute_gradients, std::vector<Eigen::VectorXd>& gradients, bool& state_validity);
+  virtual void computeValuesAndGradients(const boost::shared_ptr<StompTrajectory const>& trajectory,
+                                         Eigen::MatrixXd& feature_values,         // num_features x num_time_steps
+                                         bool compute_gradients,
+                                         std::vector<Eigen::MatrixXd>& gradients, // [num_features] num_joints x num_time_steps
+                                         std::vector<int>& validities,             // [num_time_steps] each state valid or not
+                                         int start_timestep,                      // start timestep
+                                         int num_time_steps) const;
   virtual std::string getName() const;
-  virtual boost::shared_ptr<learnable_cost_function::Feature> clone() const;
-
   void getNames(std::vector<std::string>& names) const;
 
+protected:
+  virtual bool initialize(XmlRpc::XmlRpcValue& config);
+
 private:
+
+  collision_detection::CollisionRequest collision_request_;
+
   bool debug_collisions_;
   ros::Publisher collision_viz_pub_;
   ros::Publisher collision_array_viz_pub_;
   std_msgs::ColorRGBA collision_color;
   ros::NodeHandle node_handle_;
-  std::vector<double> joint_angles_;
+
+
 };
 
 } /* namespace stomp_ros_interface */

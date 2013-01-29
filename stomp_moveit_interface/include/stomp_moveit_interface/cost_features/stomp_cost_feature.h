@@ -15,6 +15,8 @@
 #include <moveit/collision_distance_field/collision_world_distance_field.h>
 #include <moveit/collision_distance_field/collision_robot_distance_field.h>
 #include <stomp_moveit_interface/stomp_trajectory.h>
+#include <moveit/planning_scene/planning_scene.h>
+#include <moveit_msgs/MotionPlanRequest.h>
 
 namespace stomp_moveit_interface
 {
@@ -26,27 +28,40 @@ public:
   virtual ~StompCostFeature(){};
 
   bool initialize(XmlRpc::XmlRpcValue& config,
-                  boost::shared_ptr<collision_detection::CollisionRobot> collision_robot,
-                  boost::shared_ptr<collision_detection::CollisionWorld> collision_world,
-                  boost::shared_ptr<collision_detection::CollisionRobotDistanceField> collision_robot_df,
-                  boost::shared_ptr<collision_detection::CollisionWorldDistanceField> collision_world_df);
+                  const std::string& group_name,
+                  boost::shared_ptr<const collision_detection::CollisionRobot> collision_robot,
+                  boost::shared_ptr<const collision_detection::CollisionWorld> collision_world,
+                  boost::shared_ptr<const collision_detection::CollisionRobotDistanceField> collision_robot_df,
+                  boost::shared_ptr<const collision_detection::CollisionWorldDistanceField> collision_world_df);
 
   virtual int getNumValues() const = 0;
   virtual void computeValuesAndGradients(const boost::shared_ptr<StompTrajectory const>& trajectory,
                                          Eigen::MatrixXd& feature_values,         // num_features x num_time_steps
                                          bool compute_gradients,
                                          std::vector<Eigen::MatrixXd>& gradients, // [num_features] num_joints x num_time_steps
-                                         bool& state_validity) const = 0;
+                                         std::vector<int>& validities,             // [num_time_steps] each state valid or not
+                                         int start_timestep,                      // start timestep
+                                         int num_time_steps) const = 0;
   virtual std::string getName() const = 0;
   virtual void getNames(std::vector<std::string>& names) const;
 
 protected:
   virtual bool initialize(XmlRpc::XmlRpcValue& config)=0;
 
-  boost::shared_ptr<collision_detection::CollisionRobot> collision_robot_; /**< standard robot collision checker */
-  boost::shared_ptr<collision_detection::CollisionWorld> collision_world_; /**< standard robot -> world collision checker */
-  boost::shared_ptr<collision_detection::CollisionRobotDistanceField> collision_robot_df_;    /**< distance field robot collision checker */
-  boost::shared_ptr<collision_detection::CollisionWorldDistanceField> collision_world_df_;    /**< distance field robot -> world collision checker */
+  void initOutputs(const boost::shared_ptr<StompTrajectory const>& trajectory,
+                   Eigen::MatrixXd& feature_values,
+                   bool compute_gradients,
+                   std::vector<Eigen::MatrixXd>& gradients,
+                   std::vector<int>& validities) const;
+
+//  kinematic_model::KinematicModelConstPtr kinematic_model_;
+//  planning_scene::PlanningSceneConstPtr planning_scene_;
+//  moveit_msgs::MotionPlanRequest motion_plan_request_;
+  std::string group_name_;
+  boost::shared_ptr<const collision_detection::CollisionRobot> collision_robot_; /**< standard robot collision checker */
+  boost::shared_ptr<const collision_detection::CollisionWorld> collision_world_; /**< standard robot -> world collision checker */
+  boost::shared_ptr<const collision_detection::CollisionRobotDistanceField> collision_robot_df_;    /**< distance field robot collision checker */
+  boost::shared_ptr<const collision_detection::CollisionWorldDistanceField> collision_world_df_;    /**< distance field robot -> world collision checker */
 
 };
 

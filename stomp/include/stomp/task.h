@@ -78,7 +78,7 @@ public:
                          int thread_id,
                          bool compute_gradients,
                          std::vector<Eigen::VectorXd>& gradients,
-                         bool& validity) const = 0;
+                         bool& validity) = 0;
 
     /**
      * Filters the given parameters - for eg, clipping of joint limits
@@ -86,7 +86,7 @@ public:
      * @param parameters
      * @return false if no filtering was done
      */
-    virtual bool filter(std::vector<Eigen::VectorXd>& parameters, int thread_id) const {return false;};
+    virtual bool filter(std::vector<Eigen::VectorXd>& parameters, int rollout_id, int thread_id) {return false;};
 
     /**
      * Get the Policy object of this Task

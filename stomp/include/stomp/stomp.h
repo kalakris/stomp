@@ -57,7 +57,7 @@ public:
     //bool initializeAndRunTaskByName(ros::NodeHandle& node_handle, std::string& task_name);
 
     // task must already be initialized at this point.
-    bool initialize(ros::NodeHandle& node_handle, boost::shared_ptr<Task> task);
+    bool initialize(const ros::NodeHandle& node_handle, boost::shared_ptr<Task> task);
 
     bool runSingleIteration(int iteration_number);
     void clearReusedRollouts();

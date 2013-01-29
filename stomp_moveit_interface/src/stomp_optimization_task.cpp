@@ -75,6 +75,7 @@ void StompOptimizationTask::setFeaturesFromXml(const XmlRpc::XmlRpcValue& featur
     }
 
     STOMP_VERIFY(feature->initialize(feature_xml,
+                                     planning_group_name_,
                                      collision_robot_, collision_world_,
                                      collision_robot_df_, collision_world_df_));
     features.push_back(feature);
@@ -87,23 +88,16 @@ void StompOptimizationTask::setFeaturesFromXml(const XmlRpc::XmlRpcValue& featur
 void StompOptimizationTask::setFeatures(std::vector<boost::shared_ptr<StompCostFeature> >& features)
 {
   // create the feature set
-  feature_set_.reset(new learnable_cost_function::FeatureSet());
+  feature_set_.reset(new FeatureSet(num_rollouts_));
 
   for (unsigned int i=0; i<features.size(); ++i)
   {
     feature_set_->addFeature(features[i]);
   }
 
-//  // create features and add them
-//  feature_set_->addFeature(boost::shared_ptr<learnable_cost_function::Feature>(new CollisionFeature()));
-//  feature_set_->addFeature(boost::shared_ptr<learnable_cost_function::Feature>(
-//      new JointVelAccFeature(per_thread_data_[0].planning_group_->num_joints_)));
-//  feature_set_->addFeature(boost::shared_ptr<learnable_cost_function::Feature>(new CartesianVelAccFeature()));
-//  feature_set_->addFeature(boost::shared_ptr<learnable_cost_function::Feature>(new CartesianOrientationFeature()));
-
   // init feature splits
   num_features_ = feature_set_->getNumValues();
-  ROS_INFO("STOMP: Using %d features classes with %d values", features.size(), num_features_);
+  ROS_INFO("STOMP: Using %ld features classes with %d values", features.size(), num_features_);
   num_split_features_ = num_features_ * num_feature_basis_functions_;
 
   feature_basis_centers_.resize(num_feature_basis_functions_);
@@ -131,31 +125,15 @@ void StompOptimizationTask::setFeatures(std::vector<boost::shared_ptr<StompCostF
   }
 }
 
-bool StompOptimizationTask::filter(std::vector<Eigen::VectorXd>& parameters, int thread_id)
+bool StompOptimizationTask::filter(std::vector<Eigen::VectorXd>& parameters, int rollout_id, int thread_id)
 {
   // clip at joint limits
   bool filtered = false;
-  for (int d=0; d<num_dimensions_; ++d)
-  {
-    const StompRobotModel::StompJoint& joint = planning_group_->stomp_joints_[d];
-    if (joint.has_joint_limits_)
-    {
-      for (int t=0; t<num_time_steps_; ++t)
-      {
-        if (parameters[d](t) > joint.joint_limit_max_)
-        {
-          parameters[d](t) = joint.joint_limit_max_;
-          filtered = true;
-        }
-        else if (parameters[d](t) < joint.joint_limit_min_)
-        {
-          parameters[d](t) = joint.joint_limit_min_;
-          filtered = true;
-        }
-      }
-    }
-  }
-  return filtered;
+
+  if (rollout_id < 0)
+    rollout_id = num_rollouts_;
+
+  return trajectories_[rollout_id]->filterJoints(parameters);
 }
 
 bool StompOptimizationTask::execute(std::vector<Eigen::VectorXd>& parameters,
@@ -175,177 +153,50 @@ bool StompOptimizationTask::execute(std::vector<Eigen::VectorXd>& parameters,
     rollout_id = rollout_number;
     last_executed_rollout_ = rollout_number;
   }
-  computeFeatures(parameters, per_rollout_data_[rollout_id].features_, rollout_id, validity);
-  computeCosts(per_rollout_data_[rollout_id].features_, costs, weighted_feature_values);
 
-//  // copying it to per_rollout_data
-//  PerThreadData* rdata = &noiseless_rollout_data_;
-//  if (rollout_number >= 0)
-//  {
-//    if ((int)noisy_rollout_data_.size() <= rollout_number)
-//    {
-//      ROS_WARN("Not enough storage space for rollouts!");
-//    }
-//    rdata = &(noisy_rollout_data_[rollout_number]);
-//    last_executed_rollout_ = rollout_number;
-//  }
-//  *rdata = per_thread_data_[thread_id];
-//  // duplicate the cost function inputs
-//  for (unsigned int i=0; i<rdata->cost_function_input_.size(); ++i)
-//  {
-//    boost::shared_ptr<StompCostFunctionInput> input(new StompCostFunctionInput(
-//        collision_space_, rdata->robot_model_, rdata->planning_group_));
-//    *input = *rdata->cost_function_input_[i];
-//    rdata->cost_function_input_[i] = input;
-//  }
+  computeFeatures(parameters, rollout_id, validity);
+  computeCosts(trajectories_[rollout_id]->features_, costs, weighted_feature_values);
+
   return true;
 }
 
-void StompOptimizationTask::PerRolloutData::differentiate(double dt)
-{
-  int num_time_steps = cost_function_input_.size();
-  int num_joint_angles = task_->planning_group_->num_joints_;
-  int num_collision_points = task_->planning_group_->collision_points_.size();
-
-  // copy to temp structures
-  for (int t=0; t<num_time_steps; ++t)
-  {
-    for (int c=0; c<num_collision_points; ++c)
-    {
-      for (int d=0; d<3; ++d)
-      {
-        tmp_collision_point_pos_[c][d](t) = cost_function_input_[t]->collision_point_pos_[c][d];
-      }
-    }
-    for (int j=0; j<num_joint_angles; ++j)
-    {
-      tmp_joint_angles_[j](t) = cost_function_input_[t]->joint_angles_(j);
-    }
-  }
-
-  // do differentiation
-  for (int j=0; j<num_joint_angles; ++j)
-  {
-    stomp::differentiate(tmp_joint_angles_[j], stomp::STOMP_VELOCITY,
-                         tmp_joint_angles_vel_[j], dt);
-    stomp::differentiate(tmp_joint_angles_[j], stomp::STOMP_ACCELERATION,
-                         tmp_joint_angles_acc_[j], dt);
-  }
-  for (int c=0; c<num_collision_points; ++c)
-  {
-    for (int d=0; d<3; ++d)
-    {
-      stomp::differentiate(tmp_collision_point_pos_[c][d], stomp::STOMP_VELOCITY,
-                           tmp_collision_point_vel_[c][d], dt);
-      stomp::differentiate(tmp_collision_point_pos_[c][d], stomp::STOMP_ACCELERATION,
-                           tmp_collision_point_acc_[c][d], dt);
-    }
-  }
-
-  // copy the differentiated data back
-  for (int t=0; t<num_time_steps; ++t)
-  {
-    for (int c=0; c<num_collision_points; ++c)
-    {
-      for (int d=0; d<3; ++d)
-      {
-        cost_function_input_[t]->collision_point_vel_[c][d] = tmp_collision_point_vel_[c][d](t);
-        cost_function_input_[t]->collision_point_acc_[c][d] = tmp_collision_point_acc_[c][d](t);
-      }
-    }
-    for (int j=0; j<num_joint_angles; ++j)
-    {
-      cost_function_input_[t]->joint_angles_vel_(j) = tmp_joint_angles_vel_[j](t);
-      cost_function_input_[t]->joint_angles_acc_(j) = tmp_joint_angles_acc_[j](t);
-    }
-  }
-}
-
-boost::shared_ptr<StompOptimizationTask::PerRolloutData> StompOptimizationTask::PerRolloutData::clone()
-{
-  boost::shared_ptr<StompOptimizationTask::PerRolloutData> ret(new StompOptimizationTask::PerRolloutData());
-
-  *ret = *this;
-  // duplicate cost function inputs
-  for (unsigned int i=0; i<cost_function_input_.size(); ++i)
-  {
-    ret->cost_function_input_[i] = this->cost_function_input_[i]->clone();
-  }
-
-  return ret;
-}
-
 void StompOptimizationTask::computeFeatures(std::vector<Eigen::VectorXd>& parameters,
-                     Eigen::MatrixXd& features,
                      int rollout_id,
                      bool& validity)
 {
-  PerRolloutData *data = &per_rollout_data_[rollout_id];
+  trajectories_[rollout_id]->setJointPositions(parameters, stomp::TRAJECTORY_PADDING);
 
-  // prepare the cost function input
-  std::vector<double> temp_features(feature_set_->getNumValues());
-  std::vector<Eigen::VectorXd> temp_gradients(feature_set_->getNumValues());
-  std::vector<double> joint_angles(num_dimensions_);
+  feature_set_->computeValuesAndGradients(trajectories_[rollout_id],
+                                          trajectories_[rollout_id]->features_,
+                                          false, // don't compute gradients
+                                          trajectories_[rollout_id]->gradients_,
+                                          trajectories_[rollout_id]->validities_,
+                                          rollout_id,
+                                          stomp::TRAJECTORY_PADDING,
+                                          num_time_steps_);
 
-  // do all forward kinematics
+  // compute validity
   validity = true;
-  bool state_validity;
-  for (int t=0; t<num_time_steps_; ++t)
+  for (int t=0; t<num_time_steps_all_; ++t)
   {
-    for (int d=0; d<num_dimensions_; ++d)
-    {
-      data->cost_function_input_[t]->joint_angles_(d) = parameters[d](t);
-      joint_angles[d] = parameters[d](t);
-    }
-    data->cost_function_input_[t]->doFK(data->fk_solver_);
-    data->cost_function_input_[t]->per_rollout_data_ = data;
-    data->cost_function_input_[t]->time_ = t*dt_;
-    data->cost_function_input_[t]->time_index_ = t;
-  }
+    if (!trajectories_[rollout_id]->validities_[t])
+      validity = false;
 
-  data->differentiate(dt_);
-
-  // set end-effector frames
-  for (int t=0; t<num_time_steps_; ++t)
-  {
-    data->cost_function_input_[t]->endeffector_frame_ =
-        data->cost_function_input_[t]->segment_frames_[planning_group_->end_effector_segment_index_];
-  }
-  // get end-effector velocities
-  for (int t=0; t<num_time_steps_; ++t)
-  {
-    int t2 = t+1;
-    if (t2>=num_time_steps_) t2 = t;
-    data->cost_function_input_[t]->endeffector_vel_ = KDL::diff(
-        data->cost_function_input_[t]->endeffector_frame_,
-        data->cost_function_input_[t2]->endeffector_frame_,
-        dt_);
-  }
-  // get end-effector accelerations
-  for (int t=0; t<num_time_steps_; ++t)
-  {
-    int t2 = t+1;
-    if (t2>=num_time_steps_) t2 = t;
-    data->cost_function_input_[t]->endeffector_acc_ = KDL::diff(
-        data->cost_function_input_[t]->endeffector_vel_,
-        data->cost_function_input_[t2]->endeffector_vel_,
-        dt_);
-  }
-
-  // actually compute features
-  bool validities[num_time_steps_];
-  for (int t=0; t<num_time_steps_; ++t)
-  {
-    feature_set_->computeValuesAndGradients(data->cost_function_input_[t],
-                                            temp_features, false, temp_gradients, state_validity);
-    validities[t] = state_validity;
-    for (unsigned int f=0; f<temp_features.size(); ++f)
-    {
-      features.block(t, f*num_feature_basis_functions_, 1, num_feature_basis_functions_) =
-          temp_features[f] * feature_basis_functions_.row(t);
-//      features(t,f) = temp_features[f];
-    }
-
+//    if (t <= 0.1*num_time_steps_)
+//    {
+//      if (validities[0] && !validities[t])
+//        validity = false;
+//    }
+//    else if (t >= 0.9*num_time_steps_)
+//    {
+//      if (validities[num_time_steps_-1] && !validities[t])
+//        validity = false;
+//    }
+//    else
+//    {
+//      if (!validities[t])
+//        validity = false;
+//    }
   }
 
   // print validities
@@ -353,35 +204,15 @@ void StompOptimizationTask::computeFeatures(std::vector<Eigen::VectorXd>& parame
   {
     std::stringstream ss;
     ss << "[";
-    for (int t=0; t<num_time_steps_; ++t)
+    for (int t=0; t<num_time_steps_all_; ++t)
     {
-      if (validities[t])
+      if (trajectories_[rollout_id]->validities_[t])
         ss << "_";
       else
         ss << "X";
     }
     ss << "]";
     ROS_INFO("%s", ss.str().c_str());
-  }
-
-  // compute validity
-  for (int t=0; t<num_time_steps_; ++t)
-  {
-    if (t <= 0.1*num_time_steps_)
-    {
-      if (validities[0] && !validities[t])
-        validity = false;
-    }
-    else if (t >= 0.9*num_time_steps_)
-    {
-      if (validities[num_time_steps_-1] && !validities[t])
-        validity = false;
-    }
-    else
-    {
-      if (!validities[t])
-        validity = false;
-    }
   }
 
 }
@@ -396,7 +227,6 @@ void StompOptimizationTask::computeCosts(const Eigen::MatrixXd& features, Eigen:
   }
   costs = weighted_feature_values.rowwise().sum();
 }
-
 
 bool StompOptimizationTask::getPolicy(boost::shared_ptr<stomp::CovariantMovementPrimitive>& policy)
 {
@@ -433,7 +263,7 @@ void StompOptimizationTask::setControlCostWeight(double w)
 //  }
 //}
 
-void StompOptimizationTask::setMotionPlanRequest(const planning_scene::PlanningSceneConstPtr& scene,
+bool StompOptimizationTask::setMotionPlanRequest(const planning_scene::PlanningSceneConstPtr& scene,
                                                  const moveit_msgs::MotionPlanRequest& request)
 {
   control_cost_weight_ = 0.0;
@@ -461,24 +291,13 @@ void StompOptimizationTask::setMotionPlanRequest(const planning_scene::PlanningS
   kinematic_state.setStateValues(request.start_state.joint_state);
   kinematic_state.getJointStateGroup(planning_group_name_)->getVariableValues(start_joints_);
   std::map<std::string, double> goal_joint_map;
-  for (size_t i=0; i<request.goal_constraints[0].joint_constraints; ++i)
+  for (size_t i=0; i<request.goal_constraints[0].joint_constraints.size(); ++i)
   {
     goal_joint_map[request.goal_constraints[0].joint_constraints[i].joint_name] =
         request.goal_constraints[0].joint_constraints[i].position;
   }
   kinematic_state.setStateValues(goal_joint_map);
   kinematic_state.getJointStateGroup(planning_group_name_)->getVariableValues(goal_joints_);
-
-  // initialize all trajectories
-  trajectories_.resize(num_rollouts_+1);
-  for (int i=0; i<num_rollouts_+1; ++i)
-  {
-    trajectories_[i].reset(new StompTrajectory(num_time_steps_all_, kinematic_model_, planning_group_name_));
-
-    trajectories_[i].features_ = Eigen::MatrixXd(num_time_steps_all_, num_split_features_);
-    trajectories_[i].weighted_features_ = Eigen::MatrixXd(num_time_steps_all_, num_split_features_);
-    trajectories_[i].costs_ = Eigen::VectorXd(num_time_steps_all_);
-  }
 
   // create the derivative costs
   std::vector<Eigen::MatrixXd> derivative_costs(num_dimensions_,
@@ -502,6 +321,19 @@ void StompOptimizationTask::setMotionPlanRequest(const planning_scene::PlanningS
                       initial_trajectory);
   policy_->setToMinControlCost();
 
+  // initialize all trajectories
+  trajectories_.resize(num_rollouts_+1);
+  for (int i=0; i<num_rollouts_+1; ++i)
+  {
+    trajectories_[i].reset(new StompTrajectory(num_time_steps_all_, kinematic_model_, planning_group_name_, policy_));
+
+    trajectories_[i]->features_ = Eigen::MatrixXd(num_time_steps_all_, num_split_features_);
+    trajectories_[i]->weighted_features_ = Eigen::MatrixXd(num_time_steps_all_, num_split_features_);
+    trajectories_[i]->costs_ = Eigen::VectorXd(num_time_steps_all_);
+    trajectories_[i]->gradients_.resize(num_split_features_, Eigen::MatrixXd::Zero(num_dimensions_, num_time_steps_all_));
+    trajectories_[i]->validities_.resize(num_time_steps_all_, 1);
+  }
+
   // set up feature basis functions
   std::vector<double> feature_split_magnitudes(num_feature_basis_functions_);
   feature_basis_functions_ = Eigen::MatrixXd::Zero(num_time_steps_, num_feature_basis_functions_);
@@ -524,44 +356,45 @@ void StompOptimizationTask::setMotionPlanRequest(const planning_scene::PlanningS
   }
   //policy_->writeToFile(std::string("/tmp/test.txt"));
 
+  return true;
 }
 
-void StompOptimizationTask::parametersToJointTrajectory(const std::vector<Eigen::VectorXd>& parameters, trajectory_msgs::JointTrajectory& trajectory)
-{
-  trajectory.joint_names = planning_group_->getJointNames();
-
-  trajectory.points.resize(num_time_steps_ + 2);
-  trajectory.points[0].positions = start_joints_;
-  trajectory.points[num_time_steps_+1].positions = goal_joints_;
-
-  std::vector<Eigen::VectorXd> vels, accs;
-  vels.resize(num_dimensions_);
-  accs.resize(num_dimensions_);
-  for (int d=0; d<num_dimensions_; ++d)
-  {
-    stomp::differentiate(parameters[d], stomp::STOMP_VELOCITY, vels[d], dt_);
-    stomp::differentiate(parameters[d], stomp::STOMP_ACCELERATION, accs[d], dt_);
-  }
-
-  for (int i=0; i<num_time_steps_; ++i)
-  {
-    int j=i+1;
-    trajectory.points[j].positions.resize(num_dimensions_);
-    trajectory.points[j].velocities.resize(num_dimensions_);
-    trajectory.points[j].accelerations.resize(num_dimensions_);
-    for (int d=0; d<num_dimensions_; ++d)
-    {
-      trajectory.points[j].positions[d] = parameters[d](i);
-      trajectory.points[j].velocities[d] = vels[d](i);
-      trajectory.points[j].accelerations[d] = accs[d](i);
-    }
-  }
-
-  for (int i=0; i<num_time_steps_+2; ++i)
-  {
-    trajectory.points[i].time_from_start = ros::Duration(i*dt_);
-  }
-}
+//void StompOptimizationTask::parametersToJointTrajectory(const std::vector<Eigen::VectorXd>& parameters, trajectory_msgs::JointTrajectory& trajectory)
+//{
+//  trajectory.joint_names = planning_group_->getJointNames();
+//
+//  trajectory.points.resize(num_time_steps_ + 2);
+//  trajectory.points[0].positions = start_joints_;
+//  trajectory.points[num_time_steps_+1].positions = goal_joints_;
+//
+//  std::vector<Eigen::VectorXd> vels, accs;
+//  vels.resize(num_dimensions_);
+//  accs.resize(num_dimensions_);
+//  for (int d=0; d<num_dimensions_; ++d)
+//  {
+//    stomp::differentiate(parameters[d], stomp::STOMP_VELOCITY, vels[d], dt_);
+//    stomp::differentiate(parameters[d], stomp::STOMP_ACCELERATION, accs[d], dt_);
+//  }
+//
+//  for (int i=0; i<num_time_steps_; ++i)
+//  {
+//    int j=i+1;
+//    trajectory.points[j].positions.resize(num_dimensions_);
+//    trajectory.points[j].velocities.resize(num_dimensions_);
+//    trajectory.points[j].accelerations.resize(num_dimensions_);
+//    for (int d=0; d<num_dimensions_; ++d)
+//    {
+//      trajectory.points[j].positions[d] = parameters[d](i);
+//      trajectory.points[j].velocities[d] = vels[d](i);
+//      trajectory.points[j].accelerations[d] = accs[d](i);
+//    }
+//  }
+//
+//  for (int i=0; i<num_time_steps_+2; ++i)
+//  {
+//    trajectory.points[i].time_from_start = ros::Duration(i*dt_);
+//  }
+//}
 
 void StompOptimizationTask::setFeatureWeights(const std::vector<double>& weights)
 {
@@ -579,88 +412,88 @@ void StompOptimizationTask::setFeatureWeights(const Eigen::VectorXd& weights)
   feature_weights_ = weights;
 }
 
-void StompOptimizationTask::setFeatureWeightsFromFile(const std::string& abs_file_name)
-{
-  std::vector<double> weights;
-  ROS_VERIFY(usc_utilities::readDoubleArrayFromFile(abs_file_name, weights));
-  setFeatureWeights(weights);
-}
+//void StompOptimizationTask::setFeatureWeightsFromFile(const std::string& abs_file_name)
+//{
+//  std::vector<double> weights;
+//  ROS_VERIFY(usc_utilities::readDoubleArrayFromFile(abs_file_name, weights));
+//  setFeatureWeights(weights);
+//}
 
-void StompOptimizationTask::setFeatureScaling(const std::vector<double>& means, const std::vector<double>& variances)
-{
-  ROS_ASSERT((int)means.size() == num_split_features_);
-  ROS_ASSERT((int)variances.size() == num_split_features_);
-  feature_means_ = Eigen::VectorXd::Zero(means.size());
-  feature_variances_ = Eigen::VectorXd::Zero(variances.size());
-  for (int i=0; i<num_split_features_; ++i)
-  {
-    feature_means_(i) = means[i];
-    feature_variances_(i) = variances[i];
-  }
-}
+//void StompOptimizationTask::setFeatureScaling(const std::vector<double>& means, const std::vector<double>& variances)
+//{
+//  ROS_ASSERT((int)means.size() == num_split_features_);
+//  ROS_ASSERT((int)variances.size() == num_split_features_);
+//  feature_means_ = Eigen::VectorXd::Zero(means.size());
+//  feature_variances_ = Eigen::VectorXd::Zero(variances.size());
+//  for (int i=0; i<num_split_features_; ++i)
+//  {
+//    feature_means_(i) = means[i];
+//    feature_variances_(i) = variances[i];
+//  }
+//}
+//
+//void StompOptimizationTask::setFeatureScalingFromFile(const std::string& abs_means_file,
+//                               const std::string& abs_variance_file)
+//{
+//  std::vector<double> means, variances;
+//  ROS_VERIFY(usc_utilities::readDoubleArrayFromFile(abs_means_file, means));
+//  ROS_VERIFY(usc_utilities::readDoubleArrayFromFile(abs_variance_file, variances));
+//  setFeatureScaling(means, variances);
+//}
 
-void StompOptimizationTask::setFeatureScalingFromFile(const std::string& abs_means_file,
-                               const std::string& abs_variance_file)
-{
-  std::vector<double> means, variances;
-  ROS_VERIFY(usc_utilities::readDoubleArrayFromFile(abs_means_file, means));
-  ROS_VERIFY(usc_utilities::readDoubleArrayFromFile(abs_variance_file, variances));
-  setFeatureScaling(means, variances);
-}
+//void StompOptimizationTask::setInitialTrajectory(const std::vector<sensor_msgs::JointState>& joint_states)
+//{
+//  ROS_ASSERT((int)joint_states.size() == num_time_steps_);
+//  std::vector<Eigen::VectorXd> params(num_dimensions_, Eigen::VectorXd::Zero(num_time_steps_));
+//  for (int t=0; t<num_time_steps_; ++t)
+//  {
+//    for (unsigned int j=0; j<joint_states[t].name.size(); ++j)
+//    {
+//      for (unsigned int sj=0; sj<planning_group_->stomp_joints_.size(); ++sj)
+//      {
+//        if (joint_states[t].name[j] == planning_group_->stomp_joints_[sj].joint_name_)
+//        {
+//          params[sj](t) = joint_states[t].position[j];
+//        }
+//      }
+//    }
+//  }
+//  policy_->setParameters(params);
+//}
 
-void StompOptimizationTask::setInitialTrajectory(const std::vector<sensor_msgs::JointState>& joint_states)
-{
-  ROS_ASSERT((int)joint_states.size() == num_time_steps_);
-  std::vector<Eigen::VectorXd> params(num_dimensions_, Eigen::VectorXd::Zero(num_time_steps_));
-  for (int t=0; t<num_time_steps_; ++t)
-  {
-    for (unsigned int j=0; j<joint_states[t].name.size(); ++j)
-    {
-      for (unsigned int sj=0; sj<planning_group_->stomp_joints_.size(); ++sj)
-      {
-        if (joint_states[t].name[j] == planning_group_->stomp_joints_[sj].joint_name_)
-        {
-          params[sj](t) = joint_states[t].position[j];
-        }
-      }
-    }
-  }
-  policy_->setParameters(params);
-}
-
-void StompOptimizationTask::getTrajectory(std::vector<sensor_msgs::JointState>& joint_states)
-{
-  std::vector<Eigen::VectorXd> params(num_dimensions_, Eigen::VectorXd::Zero(num_time_steps_));
-  policy_->getParameters(params);
-  joint_states.resize(num_time_steps_);
-  ros::Time start_time = ros::Time::now();
-
-  for (int t=0; t<num_time_steps_; ++t)
-  {
-    joint_states[t].header.stamp = start_time + ros::Duration(t*dt_);
-    joint_states[t].name.resize(planning_group_->num_joints_);
-    joint_states[t].position.resize(planning_group_->num_joints_);
-    for (unsigned int sj=0; sj<planning_group_->stomp_joints_.size(); ++sj)
-    {
-      joint_states[t].name[sj] = planning_group_->stomp_joints_[sj].joint_name_;
-      joint_states[t].position[sj] = params[sj](t);
-    }
-  }
-}
+//void StompOptimizationTask::getTrajectory(std::vector<sensor_msgs::JointState>& joint_states)
+//{
+//  std::vector<Eigen::VectorXd> params(num_dimensions_, Eigen::VectorXd::Zero(num_time_steps_));
+//  policy_->getParameters(params);
+//  joint_states.resize(num_time_steps_);
+//  ros::Time start_time = ros::Time::now();
+//
+//  for (int t=0; t<num_time_steps_; ++t)
+//  {
+//    joint_states[t].header.stamp = start_time + ros::Duration(t*dt_);
+//    joint_states[t].name.resize(planning_group_->num_joints_);
+//    joint_states[t].position.resize(planning_group_->num_joints_);
+//    for (unsigned int sj=0; sj<planning_group_->stomp_joints_.size(); ++sj)
+//    {
+//      joint_states[t].name[sj] = planning_group_->stomp_joints_[sj].joint_name_;
+//      joint_states[t].position[sj] = params[sj](t);
+//    }
+//  }
+//}
 
 void StompOptimizationTask::setToMinControlCostTrajectory()
 {
   policy_->setToMinControlCost();
 }
 
-void StompOptimizationTask::getNoisyRolloutData(std::vector<StompTrajectory>& noisy_rollouts)
+void StompOptimizationTask::getNoisyRolloutData(std::vector<boost::shared_ptr<const StompTrajectory> >& noisy_rollouts)
 {
   noisy_rollouts.resize(num_rollouts_);
   for (int i=0; i<num_rollouts_; ++i)
     noisy_rollouts[i] = trajectories_[i];
 }
 
-void StompOptimizationTask::getNoiselessRolloutData(StompTrajectory& noiseless_rollout)
+void StompOptimizationTask::getNoiselessRolloutData(boost::shared_ptr<const StompTrajectory>& noiseless_rollout)
 {
   noiseless_rollout = trajectories_[num_rollouts_];
 }
