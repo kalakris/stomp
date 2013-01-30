@@ -40,7 +40,7 @@ void FeatureSet::computeValuesAndGradients(const boost::shared_ptr<StompTrajecto
   {
     gradients.resize(num_values_, Eigen::VectorXd::Zero(trajectory->num_joints_, trajectory->num_time_steps_));
   }
-  feature_values = Eigen::MatrixXd::Zero(num_values_, trajectory->num_time_steps_);
+  feature_values = Eigen::MatrixXd::Zero(trajectory->num_time_steps_, num_values_);
   validities.clear();
   validities.resize(trajectory->num_time_steps_, 1);
 
@@ -56,7 +56,7 @@ void FeatureSet::computeValuesAndGradients(const boost::shared_ptr<StompTrajecto
     }
     for (int j=0; j<thread_features[i].num_values; ++j)
     {
-      feature_values.row(index) = thread_features[i].values.row(j);
+      feature_values.col(index) = thread_features[i].values.col(j);
       if (compute_gradients)
       {
         gradients[index] = thread_features[i].gradients[j];
@@ -74,9 +74,9 @@ void FeatureSet::addFeature(boost::shared_ptr<StompCostFeature> feature)
     FeatureInfo fi;
     fi.feature = feature;
     fi.num_values = feature->getNumValues();
-    num_values_ += fi.num_values;
     features_[t].push_back(fi);
   }
+  num_values_ += feature->getNumValues();
 }
 
 void FeatureSet::clear()
@@ -89,12 +89,20 @@ void FeatureSet::clear()
 void FeatureSet::getNames(std::vector<std::string>& names) const
 {
   names.clear();
-  for (unsigned int i=0; i<features_.size(); ++i)
+  for (unsigned int i=0; i<features_[0].size(); ++i)
   {
     std::vector<std::string> my_names;
     features_[0][i].feature->getNames(my_names);
     if (my_names.size() > 0)
       names.insert(names.end(), my_names.begin(), my_names.end());
+  }
+}
+
+void FeatureSet::setPlanningScene(planning_scene::PlanningSceneConstPtr planning_scene)
+{
+  for (unsigned int i=0; i<features_[0].size(); ++i)
+  {
+    features_[0][i].feature->setPlanningScene(planning_scene);
   }
 }
 

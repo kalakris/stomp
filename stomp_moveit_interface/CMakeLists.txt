@@ -3,13 +3,13 @@ project(stomp_moveit_interface)
 
 set(CMAKE_BUILD_TYPE RelWithDebInfo)
 
-find_package(catkin REQUIRED COMPONENTS stomp moveit_core)
+find_package(catkin REQUIRED COMPONENTS stomp moveit_core pluginlib)
 find_package(Eigen REQUIRED)
 
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES stomp_moveit_interface
-  CATKIN-DEPENDS stomp moveit_core
+  CATKIN-DEPENDS stomp moveit_core pluginlib
   DEPENDS 
 )
 
@@ -31,6 +31,11 @@ add_library(stomp_moveit_interface
 #  src/treefksolverjointposaxis_partial.cpp
 )
 
+add_executable(test_stomp_moveit_interface
+  test/test_stomp_moveit_interface.cpp
+)
+target_link_libraries(test_stomp_moveit_interface stomp_moveit_interface)
+
 #add_executable(display_robot_model
 #  src/display_robot_model.cpp
 #)
@@ -42,6 +47,7 @@ add_library(stomp_moveit_interface
 #)
 
 #target_link_libraries(stomp_node stomp_moveit_interface)
+
 include_directories(include
   ${catkin_INCLUDE_DIRS}
 )

@@ -9,6 +9,7 @@
 #define STOMP_PLANNER_H_
 
 #include <moveit/planning_interface/planning_interface.h>
+#include <ros/ros.h>
 
 namespace stomp_moveit_interface
 {

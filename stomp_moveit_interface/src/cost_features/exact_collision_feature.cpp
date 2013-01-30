@@ -27,11 +27,13 @@ ExactCollisionFeature::ExactCollisionFeature():
   collision_color.g = 0.0;
   collision_color.b = 0.0;
 
-  debug_collisions_ = false;
+  node_handle_.param("debug_collisions", debug_collisions_, false);
+  ROS_INFO("ECF created");
 }
 
 ExactCollisionFeature::~ExactCollisionFeature()
 {
+  ROS_INFO("ECF deleted");
 }
 
 bool ExactCollisionFeature::initialize(XmlRpc::XmlRpcValue& config)
@@ -39,11 +41,16 @@ bool ExactCollisionFeature::initialize(XmlRpc::XmlRpcValue& config)
   // initialize collision request
   collision_request_.group_name = group_name_;
   collision_request_.cost = false;
-  collision_request_.contacts = false;
   collision_request_.distance = false;
-  collision_request_.max_contacts = 0;
-  collision_request_.max_contacts_per_pair = 0;
-  collision_request_.verbose = debug_collisions_;
+  collision_request_.max_contacts = 1;
+  collision_request_.max_contacts_per_pair = 1;
+  collision_request_.contacts = false;
+  collision_request_.verbose = false;
+  if (debug_collisions_)
+  {
+    collision_request_.contacts = true;
+    collision_request_.verbose = true;
+  }
   return true;
 }
 
@@ -59,7 +66,7 @@ void ExactCollisionFeature::getNames(std::vector<std::string>& names) const
 }
 
 void ExactCollisionFeature::computeValuesAndGradients(const boost::shared_ptr<StompTrajectory const>& trajectory,
-                                       Eigen::MatrixXd& feature_values,         // num_features x num_time_steps
+                                       Eigen::MatrixXd& feature_values,         // num_time_steps x num_features
                                        bool compute_gradients,
                                        std::vector<Eigen::MatrixXd>& gradients, // [num_features] num_joints x num_time_steps
                                        std::vector<int>& validities,             // [num_time_steps] each state valid or not
@@ -73,11 +80,19 @@ void ExactCollisionFeature::computeValuesAndGradients(const boost::shared_ptr<St
   for (int t=start_timestep; t<start_timestep + num_time_steps; ++t)
   {
     collision_world_->checkCollision(collision_request_, result, *collision_robot_,
-                                         trajectory->kinematic_states_[t], trajectory->kinematic_states_[t+1]);
+                                         trajectory->kinematic_states_[t], planning_scene_->getAllowedCollisionMatrix());
     if (result.collision)
     {
       validities[t] = 0;
-      feature_values(0, t) = 1.0;
+      feature_values(t, 0) = 1.0;
+      if (debug_collisions_)
+      {
+        collision_detection::CollisionResult::ContactMap::iterator it;
+        for (it = result.contacts.begin(); it!= result.contacts.end(); ++it)
+        {
+          ROS_ERROR("Collision between %s and %s", it->first.first.c_str(), it->first.second.c_str());
+        }
+      }
     }
   }
 

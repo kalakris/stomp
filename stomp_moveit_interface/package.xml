@@ -10,6 +10,13 @@
 
   <buildtool_depend>catkin</buildtool_depend>
   <build_depend>stomp</build_depend>
+  <build_depend>moveit_core</build_depend>
   <run_depend>stomp</run_depend>
+  <run_depend>moveit_core</run_depend>
+
+  <export>
+    <moveit_core plugin="${prefix}/stomp_moveit_interface_plugin.xml"/>
+    <stomp_moveit_interface plugin="${prefix}/cost_feature_plugins.xml"/>
+  </export>
 
 </package>

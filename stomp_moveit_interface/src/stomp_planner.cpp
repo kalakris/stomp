@@ -16,6 +16,7 @@
 #include <moveit/collision_detection_fcl/collision_world.h>
 #include <moveit/collision_distance_field/collision_world_distance_field.h>
 #include <moveit/collision_distance_field/collision_robot_distance_field.h>
+#include <class_loader/class_loader.h>
 
 namespace stomp_moveit_interface
 {
@@ -53,6 +54,7 @@ bool StompPlanner::solve(const planning_scene::PlanningSceneConstPtr& planning_s
                    const moveit_msgs::MotionPlanRequest &req,
                    moveit_msgs::MotionPlanResponse &res) const
 {
+  ROS_INFO("STOMP: solve() called.");
   ros::WallTime start_time = ros::WallTime::now();
   moveit_msgs::MotionPlanDetailedResponse detailed_res;
   bool success = solve(planning_scene, req, detailed_res);
@@ -65,6 +67,7 @@ bool StompPlanner::solve(const planning_scene::PlanningSceneConstPtr& planning_s
   res.planning_time = ros::Duration(wd.sec, wd.nsec);
   res.error_code = detailed_res.error_code;
 
+  ROS_INFO("STOMP: solve() finished.");
   return success;
 }
 
@@ -202,3 +205,5 @@ void StompPlanner::copyObjects(const boost::shared_ptr<const collision_detection
 }
 
 } /* namespace stomp_moveit_interface */
+
+CLASS_LOADER_REGISTER_CLASS(stomp_moveit_interface::StompPlanner, planning_interface::Planner);

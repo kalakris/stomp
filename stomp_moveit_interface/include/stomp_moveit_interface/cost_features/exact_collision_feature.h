@@ -22,7 +22,7 @@ public:
 
   virtual int getNumValues() const;
   virtual void computeValuesAndGradients(const boost::shared_ptr<StompTrajectory const>& trajectory,
-                                         Eigen::MatrixXd& feature_values,         // num_features x num_time_steps
+                                         Eigen::MatrixXd& feature_values,         // num_time_steps x num_features
                                          bool compute_gradients,
                                          std::vector<Eigen::MatrixXd>& gradients, // [num_features] num_joints x num_time_steps
                                          std::vector<int>& validities,             // [num_time_steps] each state valid or not

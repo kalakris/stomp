@@ -21,8 +21,14 @@ StompTrajectory::StompTrajectory(int num_time_steps, const kinematic_model::Kine
 
   // get the end-effector name
   const kinematic_model::JointModelGroup* joint_group = kinematic_model->getJointModelGroup(group_name_);
-  ROS_ASSERT(joint_group->isEndEffector());
-  std::string endeffector_name = joint_group->getEndEffectorName();
+  ROS_ASSERT(joint_group != NULL);
+  std::vector<std::string> endeffector_group_names = joint_group->getAttachedEndEffectorNames();
+  ROS_ASSERT_MSG(endeffector_group_names.size() == 1, "STOMP: We only handle groups with one endeffector for now");
+  const kinematic_model::JointModelGroup* endeff_joint_group = kinematic_model->getEndEffector(endeffector_group_names[0]);
+  ROS_ASSERT(endeff_joint_group != NULL);
+  std::string endeffector_name = endeff_joint_group->getEndEffectorParentGroup().second;
+
+  //ROS_INFO("StompTrajectory: Group %s has endeffector %s", group_name_.c_str(), endeffector_name.c_str());
 
   // pre allocate all memory
   kinematic_states_.resize(num_time_steps, kinematic_state::KinematicState(kinematic_model));

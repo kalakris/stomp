@@ -12,6 +12,7 @@ namespace stomp_moveit_interface
 
 bool StompCostFeature::initialize(XmlRpc::XmlRpcValue& config,
                                   const std::string& group_name,
+                                  kinematic_model::KinematicModelConstPtr kinematic_model,
                                   boost::shared_ptr<const collision_detection::CollisionRobot> collision_robot,
                                   boost::shared_ptr<const collision_detection::CollisionWorld> collision_world,
                                   boost::shared_ptr<const collision_detection::CollisionRobotDistanceField> collision_robot_df,
@@ -22,7 +23,13 @@ bool StompCostFeature::initialize(XmlRpc::XmlRpcValue& config,
   collision_world_ = collision_world;
   collision_robot_df_ = collision_robot_df;
   collision_world_df_ = collision_world_df;
+  kinematic_model_ = kinematic_model;
   return this->initialize(config);
+}
+
+void StompCostFeature::setPlanningScene(planning_scene::PlanningSceneConstPtr planning_scene)
+{
+  planning_scene_ = planning_scene;
 }
 
 void StompCostFeature::initOutputs(const boost::shared_ptr<StompTrajectory const>& trajectory,
@@ -32,7 +39,7 @@ void StompCostFeature::initOutputs(const boost::shared_ptr<StompTrajectory const
                  std::vector<int>& validities) const
 {
   int num_features = getNumValues();
-  feature_values = Eigen::MatrixXd::Zero(num_features, trajectory->num_time_steps_);
+  feature_values = Eigen::MatrixXd::Zero(trajectory->num_time_steps_, num_features);
   validities.clear();
   validities.resize(trajectory->num_time_steps_, 1);
   if (compute_gradients)

@@ -37,12 +37,18 @@ StompOptimizationTask::StompOptimizationTask(ros::NodeHandle node_handle,
 
 StompOptimizationTask::~StompOptimizationTask()
 {
+  feature_set_.reset(); // delete the features before their classloader
 }
 
 bool StompOptimizationTask::initialize(int num_threads, int num_rollouts)
 {
   num_threads_ = num_threads;
   num_rollouts_ = num_rollouts;
+
+  // read some params
+  STOMP_VERIFY(node_handle_.getParam("num_feature_basis_functions", num_feature_basis_functions_));
+  STOMP_VERIFY(node_handle_.getParam("trajectory_duration", movement_duration_));
+  STOMP_VERIFY(node_handle_.getParam("num_time_steps", num_time_steps_));
 
   return true;
 }
@@ -76,6 +82,7 @@ void StompOptimizationTask::setFeaturesFromXml(const XmlRpc::XmlRpcValue& featur
 
     STOMP_VERIFY(feature->initialize(feature_xml,
                                      planning_group_name_,
+                                     kinematic_model_,
                                      collision_robot_, collision_world_,
                                      collision_robot_df_, collision_world_df_));
     features.push_back(feature);
@@ -88,7 +95,7 @@ void StompOptimizationTask::setFeaturesFromXml(const XmlRpc::XmlRpcValue& featur
 void StompOptimizationTask::setFeatures(std::vector<boost::shared_ptr<StompCostFeature> >& features)
 {
   // create the feature set
-  feature_set_.reset(new FeatureSet(num_rollouts_));
+  feature_set_.reset(new FeatureSet(num_rollouts_+1));
 
   for (unsigned int i=0; i<features.size(); ++i)
   {
@@ -219,11 +226,11 @@ void StompOptimizationTask::computeFeatures(std::vector<Eigen::VectorXd>& parame
 
 void StompOptimizationTask::computeCosts(const Eigen::MatrixXd& features, Eigen::VectorXd& costs, Eigen::MatrixXd& weighted_feature_values) const
 {
-  weighted_feature_values = features; // just to initialize the size
+  weighted_feature_values = Eigen::VectorXd::Zero(num_time_steps_, num_split_features_);
   for (int t=0; t<num_time_steps_; ++t)
   {
-    weighted_feature_values.row(t) = (((features.row(t) - feature_means_.transpose()).array() / feature_variances_.array().transpose()) * feature_weights_.array().transpose()).matrix();
-    //weighted_feature_values.row(t) = (features.row(t).array() * feature_weights_.array().transpose()).matrix();
+    weighted_feature_values.row(t) = (((features.row(t+stomp::TRAJECTORY_PADDING) - feature_means_.transpose()).array() /
+        feature_variances_.array().transpose()) * feature_weights_.array().transpose()).matrix();
   }
   costs = weighted_feature_values.rowwise().sum();
 }
@@ -266,14 +273,12 @@ void StompOptimizationTask::setControlCostWeight(double w)
 bool StompOptimizationTask::setMotionPlanRequest(const planning_scene::PlanningSceneConstPtr& scene,
                                                  const moveit_msgs::MotionPlanRequest& request)
 {
+  planning_scene_ = scene;
+  feature_set_->setPlanningScene(planning_scene_);
+  motion_plan_request_ = &request;
   control_cost_weight_ = 0.0;
   last_executed_rollout_ = -1;
   reference_frame_ = kinematic_model_->getModelFrame();
-
-  // read some params
-  STOMP_VERIFY(node_handle_.getParam("num_feature_basis_functions", num_feature_basis_functions_));
-  STOMP_VERIFY(node_handle_.getParam("trajectory_duration", movement_duration_));
-  STOMP_VERIFY(node_handle_.getParam("num_time_steps", num_time_steps_));
 
   dt_ = movement_duration_ / (num_time_steps_-1.0);
   num_time_steps_all_ = num_time_steps_ + 2*stomp::TRAJECTORY_PADDING;
@@ -284,7 +289,9 @@ bool StompOptimizationTask::setMotionPlanRequest(const planning_scene::PlanningS
     return false;
   }
 
-  num_dimensions_ = kinematic_model_->getJointModelGroup(planning_group_name_)->getVariableCount();
+  joint_model_group_ = kinematic_model_->getJointModelGroup(planning_group_name_);
+
+  num_dimensions_ = joint_model_group_->getVariableCount();
 
   // get the start and goal positions from the message
   kinematic_state::KinematicState kinematic_state(kinematic_model_);
@@ -359,14 +366,16 @@ bool StompOptimizationTask::setMotionPlanRequest(const planning_scene::PlanningS
   return true;
 }
 
-//void StompOptimizationTask::parametersToJointTrajectory(const std::vector<Eigen::VectorXd>& parameters, trajectory_msgs::JointTrajectory& trajectory)
-//{
-//  trajectory.joint_names = planning_group_->getJointNames();
-//
-//  trajectory.points.resize(num_time_steps_ + 2);
-//  trajectory.points[0].positions = start_joints_;
-//  trajectory.points[num_time_steps_+1].positions = goal_joints_;
-//
+void StompOptimizationTask::parametersToJointTrajectory(const std::vector<Eigen::VectorXd>& parameters, trajectory_msgs::JointTrajectory& trajectory)
+{
+  //kinematic_model_->getJoin
+  trajectory.joint_names = joint_model_group_->getVariableNames();
+
+  trajectory.points.clear();
+  trajectory.points.resize(num_time_steps_ + 2);
+  trajectory.points[0].positions = start_joints_;
+  trajectory.points[num_time_steps_+1].positions = goal_joints_;
+
 //  std::vector<Eigen::VectorXd> vels, accs;
 //  vels.resize(num_dimensions_);
 //  accs.resize(num_dimensions_);
@@ -375,26 +384,26 @@ bool StompOptimizationTask::setMotionPlanRequest(const planning_scene::PlanningS
 //    stomp::differentiate(parameters[d], stomp::STOMP_VELOCITY, vels[d], dt_);
 //    stomp::differentiate(parameters[d], stomp::STOMP_ACCELERATION, accs[d], dt_);
 //  }
-//
-//  for (int i=0; i<num_time_steps_; ++i)
-//  {
-//    int j=i+1;
-//    trajectory.points[j].positions.resize(num_dimensions_);
+
+  for (int i=0; i<num_time_steps_; ++i)
+  {
+    int j=i+1;
+    trajectory.points[j].positions.resize(num_dimensions_);
 //    trajectory.points[j].velocities.resize(num_dimensions_);
 //    trajectory.points[j].accelerations.resize(num_dimensions_);
-//    for (int d=0; d<num_dimensions_; ++d)
-//    {
-//      trajectory.points[j].positions[d] = parameters[d](i);
+    for (int d=0; d<num_dimensions_; ++d)
+    {
+      trajectory.points[j].positions[d] = parameters[d](i);
 //      trajectory.points[j].velocities[d] = vels[d](i);
 //      trajectory.points[j].accelerations[d] = accs[d](i);
-//    }
-//  }
-//
-//  for (int i=0; i<num_time_steps_+2; ++i)
-//  {
-//    trajectory.points[i].time_from_start = ros::Duration(i*dt_);
-//  }
-//}
+    }
+  }
+
+  for (int i=0; i<num_time_steps_+2; ++i)
+  {
+    trajectory.points[i].time_from_start = ros::Duration(i*dt_);
+  }
+}
 
 void StompOptimizationTask::setFeatureWeights(const std::vector<double>& weights)
 {
@@ -605,8 +614,8 @@ void StompOptimizationTask::getNoiselessRolloutData(boost::shared_ptr<const Stom
 
 void StompOptimizationTask::onEveryIteration()
 {
-  if (publish_trajectory_markers_)
-    publishTrajectoryMarkers(viz_trajectory_pub_);
+//  if (publish_trajectory_markers_)
+//    publishTrajectoryMarkers(viz_trajectory_pub_);
 }
 
 void StompOptimizationTask::setTrajectoryVizPublisher(ros::Publisher& viz_trajectory_pub)

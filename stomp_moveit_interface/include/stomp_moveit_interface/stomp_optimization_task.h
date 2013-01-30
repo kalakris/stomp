@@ -136,6 +136,9 @@ private:
   pluginlib::ClassLoader<StompCostFeature> feature_loader_;
 
   kinematic_model::KinematicModelConstPtr kinematic_model_;
+  planning_scene::PlanningSceneConstPtr planning_scene_;
+  const moveit_msgs::MotionPlanRequest* motion_plan_request_;
+  const kinematic_model::JointModelGroup* joint_model_group_;
 
   boost::shared_ptr<const collision_detection::CollisionRobot> collision_robot_; /**< standard robot collision checker */
   boost::shared_ptr<const collision_detection::CollisionWorld> collision_world_; /**< standard robot -> world collision checker */

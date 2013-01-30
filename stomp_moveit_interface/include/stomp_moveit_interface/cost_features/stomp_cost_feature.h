@@ -29,21 +29,26 @@ public:
 
   bool initialize(XmlRpc::XmlRpcValue& config,
                   const std::string& group_name,
+                  kinematic_model::KinematicModelConstPtr kinematic_model,
                   boost::shared_ptr<const collision_detection::CollisionRobot> collision_robot,
                   boost::shared_ptr<const collision_detection::CollisionWorld> collision_world,
                   boost::shared_ptr<const collision_detection::CollisionRobotDistanceField> collision_robot_df,
                   boost::shared_ptr<const collision_detection::CollisionWorldDistanceField> collision_world_df);
 
+  void setPlanningScene(planning_scene::PlanningSceneConstPtr planning_scene);
+
   virtual int getNumValues() const = 0;
   virtual void computeValuesAndGradients(const boost::shared_ptr<StompTrajectory const>& trajectory,
-                                         Eigen::MatrixXd& feature_values,         // num_features x num_time_steps
+                                         Eigen::MatrixXd& feature_values,         // num_time_steps x num_features
                                          bool compute_gradients,
                                          std::vector<Eigen::MatrixXd>& gradients, // [num_features] num_joints x num_time_steps
                                          std::vector<int>& validities,             // [num_time_steps] each state valid or not
                                          int start_timestep,                      // start timestep
                                          int num_time_steps) const = 0;
   virtual std::string getName() const = 0;
-  virtual void getNames(std::vector<std::string>& names) const;
+  virtual void getNames(std::vector<std::string>& names) const = 0;
+
+
 
 protected:
   virtual bool initialize(XmlRpc::XmlRpcValue& config)=0;
@@ -54,9 +59,9 @@ protected:
                    std::vector<Eigen::MatrixXd>& gradients,
                    std::vector<int>& validities) const;
 
-//  kinematic_model::KinematicModelConstPtr kinematic_model_;
-//  planning_scene::PlanningSceneConstPtr planning_scene_;
-//  moveit_msgs::MotionPlanRequest motion_plan_request_;
+  kinematic_model::KinematicModelConstPtr kinematic_model_;
+  planning_scene::PlanningSceneConstPtr planning_scene_;
+  //const moveit_msgs::MotionPlanRequest* motion_plan_request_;
   std::string group_name_;
   boost::shared_ptr<const collision_detection::CollisionRobot> collision_robot_; /**< standard robot collision checker */
   boost::shared_ptr<const collision_detection::CollisionWorld> collision_world_; /**< standard robot -> world collision checker */
