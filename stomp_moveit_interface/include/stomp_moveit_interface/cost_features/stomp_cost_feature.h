@@ -28,6 +28,7 @@ public:
   virtual ~StompCostFeature(){};
 
   bool initialize(XmlRpc::XmlRpcValue& config,
+                  int num_threads,
                   const std::string& group_name,
                   kinematic_model::KinematicModelConstPtr kinematic_model,
                   boost::shared_ptr<const collision_detection::CollisionRobot> collision_robot,
@@ -43,6 +44,7 @@ public:
                                          bool compute_gradients,
                                          std::vector<Eigen::MatrixXd>& gradients, // [num_features] num_joints x num_time_steps
                                          std::vector<int>& validities,             // [num_time_steps] each state valid or not
+                                         int thread_id,
                                          int start_timestep,                      // start timestep
                                          int num_time_steps) const = 0;
   virtual std::string getName() const = 0;
@@ -63,6 +65,7 @@ protected:
   planning_scene::PlanningSceneConstPtr planning_scene_;
   //const moveit_msgs::MotionPlanRequest* motion_plan_request_;
   std::string group_name_;
+  int num_threads_;
   boost::shared_ptr<const collision_detection::CollisionRobot> collision_robot_; /**< standard robot collision checker */
   boost::shared_ptr<const collision_detection::CollisionWorld> collision_world_; /**< standard robot -> world collision checker */
   boost::shared_ptr<const collision_detection::CollisionRobotDistanceField> collision_robot_df_;    /**< distance field robot collision checker */

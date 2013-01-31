@@ -70,6 +70,7 @@ void ExactCollisionFeature::computeValuesAndGradients(const boost::shared_ptr<St
                                        bool compute_gradients,
                                        std::vector<Eigen::MatrixXd>& gradients, // [num_features] num_joints x num_time_steps
                                        std::vector<int>& validities,             // [num_time_steps] each state valid or not
+                                       int thread_id,
                                        int start_timestep,                      // start timestep
                                        int num_time_steps) const
 {

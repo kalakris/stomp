@@ -11,6 +11,7 @@ namespace stomp_moveit_interface
 {
 
 bool StompCostFeature::initialize(XmlRpc::XmlRpcValue& config,
+                                  int num_threads,
                                   const std::string& group_name,
                                   kinematic_model::KinematicModelConstPtr kinematic_model,
                                   boost::shared_ptr<const collision_detection::CollisionRobot> collision_robot,
@@ -18,6 +19,7 @@ bool StompCostFeature::initialize(XmlRpc::XmlRpcValue& config,
                                   boost::shared_ptr<const collision_detection::CollisionRobotDistanceField> collision_robot_df,
                                   boost::shared_ptr<const collision_detection::CollisionWorldDistanceField> collision_world_df)
 {
+  num_threads_ = num_threads;
   group_name_ = group_name;
   collision_robot_ = collision_robot;
   collision_world_ = collision_world;

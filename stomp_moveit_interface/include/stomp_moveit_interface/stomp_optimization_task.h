@@ -74,6 +74,9 @@ public:
 
   void publishTrajectoryMarkers(ros::Publisher& viz_pub);
 
+  // this function overwrites the last noiseless rollout!
+  void publishTrajectoryMarkers(ros::Publisher& viz_pub, const std::vector<Eigen::VectorXd>& parameters);
+
   void publishCollisionModelMarkers(int rollout_number);
 
   void parametersToJointTrajectory(const std::vector<Eigen::VectorXd>& parameters, trajectory_msgs::JointTrajectory& trajectory);

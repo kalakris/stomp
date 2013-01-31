@@ -46,6 +46,7 @@ public:
 private:
   ros::NodeHandle node_handle_;
 
+  ros::Publisher trajectory_viz_pub_;
   //boost::shared_ptr<stomp::STOMP> stomp_;
   //std::map<std::string, boost::shared_ptr<StompOptimizationTask> > stomp_tasks_;
   kinematic_model::KinematicModelConstPtr kinematic_model_;

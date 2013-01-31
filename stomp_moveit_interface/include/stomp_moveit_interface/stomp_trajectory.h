@@ -63,6 +63,10 @@ public:
   std::vector<double> tmp_joint_angles_; /**< [num_joints] temporary storage for joint angles */
   std::vector<double> tmp_joint_filter_; /**< [1] tmp storage to filter each joint at limits */
 
+  void getVisualizationMarker(visualization_msgs::Marker& marker,
+                             const std_msgs::ColorRGBA& good_color,
+                             const std_msgs::ColorRGBA& bad_color);
+
 //  void differentiate(double dt);
 //  void publishMarkers(ros::Publisher& viz_pub, int id, bool noiseless, const std::string& reference_frame);
 //  void publishMarkers(ros::Publisher& viz_pub, int id, const std::string& ns,

@@ -5,17 +5,16 @@
  *      Author: kalakris
  */
 
-#include <stomp_ros_interface/cost_features/collision_feature.h>
-#include <stomp_ros_interface/stomp_cost_function_input.h>
-#include <stomp_ros_interface/sigmoid.h>
+#include <stomp_moveit_interface/cost_features/collision_feature.h>
+#include <stomp_moveit_interface/sigmoid.h>
 #include <sstream>
 
-PLUGINLIB_DECLARE_CLASS(stomp_ros_interface,
+PLUGINLIB_DECLARE_CLASS(stomp_moveit_interface,
                         CollisionFeature,
-                        stomp_ros_interface::CollisionFeature,
-                        stomp_ros_interface::StompCostFeature);
+                        stomp_moveit_interface::CollisionFeature,
+                        stomp_moveit_interface::StompCostFeature);
 
-namespace stomp_ros_interface
+namespace stomp_moveit_interface
 {
 
 CollisionFeature::CollisionFeature()
@@ -39,15 +38,39 @@ CollisionFeature::CollisionFeature()
   sigmoid_slopes_.push_back(200.0);
 
   num_sigmoids_ = sigmoid_centers_.size();
-  //num_sigmoids_ = 0;
+  num_sigmoids_ = 0;
+
 }
 
 CollisionFeature::~CollisionFeature()
 {
 }
 
-bool CollisionFeature::initialize(XmlRpc::XmlRpcValue& config, const StompRobotModel::StompPlanningGroup* planning_group)
+bool CollisionFeature::initialize(XmlRpc::XmlRpcValue& config)
 {
+  // initialize collision request
+  collision_request_.group_name = group_name_;
+  collision_request_.cost = false;
+  collision_request_.distance = false;
+  collision_request_.max_contacts = 1;
+  collision_request_.max_contacts_per_pair = 1;
+  collision_request_.contacts = false;
+  collision_request_.verbose = false;
+  if (debug_collisions_)
+  {
+    collision_request_.contacts = true;
+    collision_request_.verbose = true;
+  }
+
+  group_state_representations_.clear();
+  group_state_representations_.resize(num_threads_);
+
+  report_validity_ = false;
+  debug_collisions_ = false;
+  clearance_ = 0.2;
+  stomp::getParam(config, "report_validity", report_validity_);
+  stomp::getParam(config, "collision_clearance", clearance_);
+  stomp::getParam(config, "debug_collisions", debug_collisions_);
   return true;
 }
 
@@ -68,59 +91,75 @@ void CollisionFeature::getNames(std::vector<std::string>& names) const
   }
 }
 
-void CollisionFeature::computeValuesAndGradients(boost::shared_ptr<learnable_cost_function::Input const> generic_input, std::vector<double>& feature_values,
-                               bool compute_gradients, std::vector<Eigen::VectorXd>& gradients, bool& state_validity)
+void CollisionFeature::computeValuesAndGradients(const boost::shared_ptr<StompTrajectory const>& trajectory,
+                                       Eigen::MatrixXd& feature_values,         // num_time_steps x num_features
+                                       bool compute_gradients,
+                                       std::vector<Eigen::MatrixXd>& gradients, // [num_features] num_joints x num_time_steps
+                                       std::vector<int>& validities,             // [num_time_steps] each state valid or not
+                                       int thread_id,
+                                       int start_timestep,                      // start timestep
+                                       int num_time_steps) const
 {
-  boost::shared_ptr<stomp_ros_interface::StompCostFunctionInput const> input =
-      boost::dynamic_pointer_cast<stomp_ros_interface::StompCostFunctionInput const>(generic_input);
+  initOutputs(trajectory, feature_values, compute_gradients, gradients, validities);
 
-  // initialize arrays
-  feature_values.clear();
-  feature_values.resize(getNumValues(), 0.0);
-  if (compute_gradients)
+  collision_detection::CollisionResult result;
+  boost::shared_ptr<collision_detection::GroupStateRepresentation>& gsr = group_state_representations_[thread_id];
+
+  for (int t=start_timestep; t<start_timestep + num_time_steps; ++t)
   {
-    gradients.resize(getNumValues(), Eigen::VectorXd::Zero(input->getNumDimensions()));
-  }
+    collision_world_df_->getCollisionGradients(collision_request_, result, *collision_robot_df_,
+                                         trajectory->kinematic_states_[t], &(planning_scene_->getAllowedCollisionMatrix()),
+                                         gsr);
 
-  state_validity = true;
-
-  // for each collision point, add up the distance field costs...
-  double total_cost = 0.0;
-  for (unsigned int i=0; i<input->collision_point_pos_.size(); ++i)
-  {
-
-//    double potential = 0.0;
-//    bool in_collision = input->collision_space_->getCollisionPointPotential(
-//        input->planning_group_->collision_points_[i], input->collision_point_pos_[i], potential);
-
-    double distance = 0.0;
-    bool in_collision = input->collision_space_->getCollisionPointDistance(
-        input->planning_group_->collision_points_[i], input->collision_point_pos_[i], distance);
-
-    double potential = 0.0;
-    double clearance = input->planning_group_->collision_points_[i].getClearance();
-    if (distance >= clearance)
-      potential = 0.0;
-    else if (distance >= 0.0)
-      potential = 0.5 * (distance - clearance) * (distance - clearance) / clearance;
-    else // distance < 0.0
-      potential = -distance + 0.5 * clearance;
-
-    double vel_mag = input->collision_point_vel_[i].Norm();
-    total_cost += potential * vel_mag;
-//    if (in_collision)
-//      state_validity = false;
-
-    for (int i=0; i<num_sigmoids_; ++i)
+    for (size_t i=0; i<gsr->gradients_.size(); ++i)
     {
-      double val = (1.0 - sigmoid(distance, sigmoid_centers_[i], sigmoid_slopes_[i]));
-      feature_values[i+1] += val * vel_mag;
-      //printf("distance = %f, sigmoid %d = %f\n", distance, i, val);
+      for (size_t j=0; j<gsr->gradients_[i].distances.size(); ++j)
+      {
+        double distance = gsr->gradients_[i].distances[j];
+
+        double potential = 0.0;
+        if (distance >= clearance_)
+          potential = 0.0;
+        else if (distance >= 0.0)
+          potential = 0.5 * (distance - clearance_) * (distance - clearance_) / clearance_;
+        else // distance < 0.0
+          potential = -distance + 0.5 * clearance_;
+
+        feature_values(t,0) += potential;
+
+
+//        for (int i=0; i<num_sigmoids_; ++i)
+//        {
+//          double val = (1.0 - sigmoid(distance, sigmoid_centers_[i], sigmoid_slopes_[i]));
+//          feature_values[i+1] += val * vel_mag;
+//          //printf("distance = %f, sigmoid %d = %f\n", distance, i, val);
+//        }
+
+      }
     }
 
+    if (report_validity_)
+    {
+      collision_world_df_->checkCollision(collision_request_, result, *collision_robot_df_,
+                                           trajectory->kinematic_states_[t], planning_scene_->getAllowedCollisionMatrix(),
+                                           gsr);
+      if (result.collision)
+      {
+        validities[t] = 0;
+        if (debug_collisions_)
+        {
+          collision_detection::CollisionResult::ContactMap::iterator it;
+          for (it = result.contacts.begin(); it!= result.contacts.end(); ++it)
+          {
+            ROS_ERROR("Collision between %s and %s", it->first.first.c_str(), it->first.second.c_str());
+          }
+        }
+      }
+
+    }
+
+
   }
-  feature_values[0] = total_cost;
-  //feature_values[1] = state_validity?0.0:1.0;
 
   // TODO gradients not computed yet!!!
 }
@@ -128,12 +167,6 @@ void CollisionFeature::computeValuesAndGradients(boost::shared_ptr<learnable_cos
 std::string CollisionFeature::getName() const
 {
   return "CollisionFeature";
-}
-
-boost::shared_ptr<learnable_cost_function::Feature> CollisionFeature::clone() const
-{
-  boost::shared_ptr<CollisionFeature> ret(new CollisionFeature());
-  return ret;
 }
 
 } /* namespace stomp_ros_interface */

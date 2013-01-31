@@ -24,6 +24,7 @@ namespace stomp_moveit_interface
 StompPlanner::StompPlanner():
     node_handle_("~")
 {
+  trajectory_viz_pub_ = node_handle_.advertise<visualization_msgs::Marker>("stomp_trajectories", 20);
 }
 
 StompPlanner::~StompPlanner()
@@ -122,16 +123,18 @@ bool StompPlanner::solve(const planning_scene::PlanningSceneConstPtr& planning_s
   stomp_task->setFeaturesFromXml(features_xml);
   stomp_task->setControlCostWeight(0.00001);
   stomp_task->setMotionPlanRequest(planning_scene, req);
+  stomp_task->setTrajectoryVizPublisher(const_cast<ros::Publisher&>(trajectory_viz_pub_));
 
   stomp.reset(new stomp::STOMP());
   stomp->initialize(node_handle_, stomp_task);
 
   // TODO: don't hardcode these params
-  bool success = stomp->runUntilValid(200, 10);
+  bool success = stomp->runUntilValid(100, 10);
 
   std::vector<Eigen::VectorXd> best_params;
   double best_cost;
   stomp->getBestNoiselessParameters(best_params, best_cost);
+  stomp_task->publishTrajectoryMarkers(const_cast<ros::Publisher&>(trajectory_viz_pub_), best_params);
   res.trajectory_start = req.start_state;
   res.group_name = req.group_name;
   res.trajectory.resize(1);

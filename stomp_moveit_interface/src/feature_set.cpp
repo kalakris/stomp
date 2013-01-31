@@ -49,7 +49,8 @@ void FeatureSet::computeValuesAndGradients(const boost::shared_ptr<StompTrajecto
   {
     bool validity = false;
     thread_features[i].feature->computeValuesAndGradients(trajectory, thread_features[i].values, compute_gradients,
-                                                    thread_features[i].gradients, thread_features[i].validities, start_timestep, num_time_steps);
+                                                    thread_features[i].gradients, thread_features[i].validities,
+                                                    thread_id, start_timestep, num_time_steps);
     for (int t=0; t<trajectory->num_time_steps_; ++t)
     {
       validities[t] = validities[t] && thread_features[i].validities[t];
