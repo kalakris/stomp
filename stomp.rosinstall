@@ -1,0 +1,14 @@
+- git: {local-name: moveit_core, uri: 'git@github.com:kalakris/moveit_core.git'}
+- git: {local-name: moveit_planners, uri: 'git@github.com:kalakris/moveit_planners.git'}
+- git: {local-name: moveit_ros, uri: 'git@github.com:kalakris/moveit_ros.git'}
+- git: {local-name: moveit_setup_assistant, uri: 'git@github.com:kalakris/moveit_setup_assistant.git'}
+- git: {local-name: moveit_msgs, uri: 'git@github.com:kalakris/moveit_msgs.git'}
+- git: {local-name: moveit_experimental, uri: 'git@github.com:kalakris/moveit_experimental.git'}
+- git: {local-name: moveit_pr2, uri: 'git@github.com:kalakris/moveit_pr2.git'}
+- git: {local-name: moveit_robots, uri: 'git@github.com:kalakris/moveit_robots.git'}
+- git: {local-name: moveit_commander, uri: 'git@github.com:kalakris/moveit_commander.git'}
+- git: {local-name: moveit_docs, uri: 'git@github.com:kalakris/moveit_docs.git'}
+- git: {local-name: manipulation_msgs, uri: 'git@github.com:kalakris/manipulation_msgs.git'}
+- git: {local-name: geometric_shapes, uri: 'git@github.com:kalakris/geometric_shapes.git'}
+- git: {local-name: stomp, uri: 'git@github.com:kalakris/stomp.git'}
+- git: {local-name: plannerarena, uri: 'git@github.com:kalakris/plannerarena.git'}
