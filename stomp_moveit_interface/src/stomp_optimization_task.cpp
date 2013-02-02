@@ -366,6 +366,46 @@ bool StompOptimizationTask::setMotionPlanRequest(const planning_scene::PlanningS
   }
   //policy_->writeToFile(std::string("/tmp/test.txt"));
 
+  if (publish_distance_fields_)
+  {
+    // ping the distance field once to initialize it so that we can publish
+    collision_detection::CollisionRequest collision_request;
+    collision_detection::CollisionResult collision_result;
+    collision_request.group_name = planning_group_name_;
+    collision_request.contacts = true;
+    collision_request.max_contacts = 100;
+    boost::shared_ptr<collision_detection::GroupStateRepresentation> gsr;
+    collision_world_df_->checkCollision(collision_request, collision_result, *collision_robot_df_,
+                                        kinematic_state, planning_scene_->getAllowedCollisionMatrix(),
+                                        gsr);
+    // this is the goal state, there should be no collisions
+
+    if (collision_result.collision)
+    {
+      ROS_ERROR("STOMP: goal state in collision!");
+      collision_detection::CollisionResult::ContactMap::iterator it;
+      for (it = collision_result.contacts.begin(); it!= collision_result.contacts.end(); ++it)
+      {
+        ROS_ERROR("Collision between %s and %s", it->first.first.c_str(), it->first.second.c_str());
+      }
+    }
+
+    boost::shared_ptr<const distance_field::DistanceField> robot_df = collision_robot_df_->getLastDistanceFieldEntry()->distance_field_;
+    boost::shared_ptr<const distance_field::DistanceField> world_df = collision_world_df_->getDistanceField();
+    visualization_msgs::Marker robot_df_marker, world_df_marker;
+    robot_df->getIsoSurfaceMarkers(0.0, 0.03, reference_frame_, ros::Time::now(), Eigen::Affine3d::Identity(), robot_df_marker);
+    world_df->getIsoSurfaceMarkers(0.0, 0.03, reference_frame_, ros::Time::now(), Eigen::Affine3d::Identity(), world_df_marker);
+    robot_df_marker.ns="robot_distance_field";
+    world_df_marker.ns="world_distance_field";
+    viz_distance_field_pub_.publish(robot_df_marker);
+    viz_distance_field_pub_.publish(world_df_marker);
+
+    // visualize the robot model too
+    visualization_msgs::MarkerArray body_marker_array;
+    getBodySphereVisualizationMarkers(gsr, reference_frame_, ros::Time::now(), body_marker_array);
+    viz_robot_body_pub_.publish(body_marker_array);
+  }
+
   return true;
 }
 
@@ -669,6 +709,18 @@ void StompOptimizationTask::setTrajectoryVizPublisher(ros::Publisher& viz_trajec
 {
   publish_trajectory_markers_ = true;
   viz_trajectory_pub_ = viz_trajectory_pub;
+}
+
+void StompOptimizationTask::setDistanceFieldVizPublisher(ros::Publisher& viz_distance_field_pub)
+{
+  publish_distance_fields_ = true;
+  viz_distance_field_pub_ = viz_distance_field_pub;
+}
+
+void StompOptimizationTask::setRobotBodyVizPublisher(ros::Publisher& viz_robot_body_pub)
+{
+  publish_robot_body_ = true;
+  viz_robot_body_pub_ = viz_robot_body_pub;
 }
 
 //const StompRobotModel::StompPlanningGroup* StompOptimizationTask::getPlanningGroup()

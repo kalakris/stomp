@@ -24,7 +24,8 @@ namespace stomp_moveit_interface
 StompPlanner::StompPlanner():
     node_handle_("~")
 {
-  trajectory_viz_pub_ = node_handle_.advertise<visualization_msgs::Marker>("stomp_trajectories", 20);
+  trajectory_viz_pub_ = node_handle_.advertise<visualization_msgs::Marker>("marker", 20);
+  robot_body_viz_pub_ = node_handle_.advertise<visualization_msgs::MarkerArray>("marker_array", 20);
 }
 
 StompPlanner::~StompPlanner()
@@ -95,6 +96,11 @@ bool StompPlanner::solve(const planning_scene::PlanningSceneConstPtr& planning_s
   bool use_signed_distance_field = true;
   double padding = 0.0;
   double scale = 1.0;
+
+  // TODO: remove this disgusting hack!
+  link_body_decompositions["r_shoulder_pan_link"] = std::vector<collision_detection::CollisionSphere>();
+  link_body_decompositions["r_shoulder_lift_link"] = std::vector<collision_detection::CollisionSphere>();
+
   collision_robot_df.reset(new collision_detection::CollisionRobotDistanceField(kinematic_model_,
                                                                                  link_body_decompositions,
                                                                                  df_size_x_, df_size_y_, df_size_z_,
@@ -122,8 +128,10 @@ bool StompPlanner::solve(const planning_scene::PlanningSceneConstPtr& planning_s
   STOMP_VERIFY(node_handle_.getParam("features", features_xml));
   stomp_task->setFeaturesFromXml(features_xml);
   stomp_task->setControlCostWeight(0.00001);
-  stomp_task->setMotionPlanRequest(planning_scene, req);
   stomp_task->setTrajectoryVizPublisher(const_cast<ros::Publisher&>(trajectory_viz_pub_));
+  stomp_task->setDistanceFieldVizPublisher((const_cast<ros::Publisher&>(trajectory_viz_pub_)));
+  stomp_task->setRobotBodyVizPublisher((const_cast<ros::Publisher&>(robot_body_viz_pub_)));
+  stomp_task->setMotionPlanRequest(planning_scene, req);
 
   stomp.reset(new stomp::STOMP());
   stomp->initialize(node_handle_, stomp_task);

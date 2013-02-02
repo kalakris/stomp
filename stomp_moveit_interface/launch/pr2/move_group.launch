@@ -1,6 +1,6 @@
 <launch>
 
-  <include file="$(find pr2_moveit_config)/launch/planning_context.launch" />
+  <include file="$(find stomp_moveit_interface)/launch/pr2/planning_context.launch" />
 
   <arg name="debug" default="false" />
   <arg unless="$(arg debug)" name="launch_prefix" value="" />

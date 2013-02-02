@@ -95,6 +95,8 @@ public:
 
   virtual void onEveryIteration();
   void setTrajectoryVizPublisher(ros::Publisher& viz_trajectory_pub);
+  void setDistanceFieldVizPublisher(ros::Publisher& viz_distance_field_pub);
+  void setRobotBodyVizPublisher(ros::Publisher& viz_robot_body_pub);
 
   //const StompRobotModel::StompPlanningGroup* getPlanningGroup();
 
@@ -122,9 +124,12 @@ private:
   std::vector<double> start_joints_;
   std::vector<double> goal_joints_;
 
-  ros::Publisher viz_pub_;
+  ros::Publisher viz_distance_field_pub_;
+  ros::Publisher viz_robot_body_pub_;
   ros::Publisher viz_trajectory_pub_;
   bool publish_trajectory_markers_;
+  bool publish_distance_fields_;
+  bool publish_robot_body_;
   int max_rollout_markers_published_;
   int last_executed_rollout_;
 

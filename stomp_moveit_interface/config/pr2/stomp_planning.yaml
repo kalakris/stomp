@@ -30,10 +30,10 @@ write_to_file: false
 use_openmp: false
 
 features: 
-  -
-    class: stomp_moveit_interface/ExactCollisionFeature
 #  -
-#    class: stomp_moveit_interface/CollisionFeature
-#    report_validity: true # report state validity based on distance field
-#    collision_clearance: 0.10
-#    debug_collisions: true
+#    class: stomp_moveit_interface/ExactCollisionFeature
+  -
+    class: stomp_moveit_interface/CollisionFeature
+    report_validity: true # report state validity based on distance field
+    collision_clearance: 0.10
+    debug_collisions: false
