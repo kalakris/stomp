@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<package>
+  <name>stomp_pr2_description</name>
+  <version>0.1.0</version>
+  <description>Hacked pr2 URDF files for use with distance field collision checkers</description>
+  <maintainer email="kalakris@usc.edu">Mrinal Kalakrishnan</maintainer>
+  <license>BSD</license>
+  <buildtool_depend>catkin</buildtool_depend>
+</package>
