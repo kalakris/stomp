@@ -59,7 +59,7 @@ public:
                        int thread_id,
                        bool compute_gradients,
                        std::vector<Eigen::VectorXd>& gradients,
-                       bool& validity) const;
+                       bool& validity);
 
   virtual bool filter(std::vector<Eigen::VectorXd>& parameters, int thread_id) const;
 

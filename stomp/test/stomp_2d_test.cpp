@@ -211,7 +211,7 @@ bool Stomp2DTest::execute(std::vector<Eigen::VectorXd>& parameters,
                      int thread_id,
                      bool compute_gradients,
                      std::vector<Eigen::VectorXd>& gradients,
-                     bool& validity) const
+                     bool& validity)
 {
   costs = Eigen::VectorXd::Zero(num_time_steps_);
   //weighted_feature_values = Eigen::MatrixXd::Zero(num_time_steps_, 1);
