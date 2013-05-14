@@ -593,7 +593,11 @@ int main(int argc, char ** argv)
 
               std::stringstream copy_command;
               copy_command << "mv " << output_dir << " " << large_scale_output_dir << "/" << test_name.str();
-              system(copy_command.str().c_str());
+              if (system(copy_command.str().c_str()))
+              {
+                ROS_ERROR("System command failed: %s", copy_command.str().c_str());
+                return false;
+              }
               //ROS_INFO_STREAM(copy_command.str());
               if (!node_handle.ok())
                 return false;
@@ -628,7 +632,11 @@ int main(int argc, char ** argv)
 
         std::stringstream copy_command;
         copy_command << "mv " << output_dir << " " << large_scale_output_dir << "/" << test_name.str();
-        system(copy_command.str().c_str());
+        if (system(copy_command.str().c_str()))
+        {
+          ROS_ERROR("System command failed: %s", copy_command.str().c_str());
+          return false;
+        }
         //ROS_INFO_STREAM(copy_command.str());
         if (!node_handle.ok())
           return false;
