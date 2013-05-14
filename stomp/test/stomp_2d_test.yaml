@@ -26,7 +26,7 @@ stomp:
   noise_min_stddev: [0.01, 0.01]
 
 chomp:
-  learning_rate: 0.1
+  learning_rate: 10.0
   max_update: 1000.0
 
 

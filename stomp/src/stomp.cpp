@@ -171,7 +171,7 @@ bool STOMP::doExecuteRollouts(int iteration_number)
     int thread_id = omp_get_thread_num();
 //    printf("thread_id = %d\n", thread_id);
     bool validity;
-    STOMP_VERIFY(task_->execute(projected_rollouts_[r], projected_rollouts_[r], tmp_rollout_cost_[r], tmp_rollout_weighted_features_[r],
+    STOMP_VERIFY(task_->execute(rollouts_[r], projected_rollouts_[r], tmp_rollout_cost_[r], tmp_rollout_weighted_features_[r],
                               iteration_number, r, thread_id, false, gradients, validity));
   }
   for (int r=0; r<int(rollouts_.size()); ++r)

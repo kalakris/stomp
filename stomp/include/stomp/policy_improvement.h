@@ -225,6 +225,7 @@ private:
     //std::vector<Eigen::MatrixXd> adapted_covariance_inverse_;
     bool adapted_covariance_valid_;
     bool use_covariance_matrix_adaptation_;
+    bool use_projection_;
     std::vector<double> noise_min_stddev_;
 
     // temporary variables pre-allocated for efficiency:

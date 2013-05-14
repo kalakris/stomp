@@ -124,6 +124,12 @@ bool CovariantMovementPrimitive::computeMinControlCostParameters()
     parameters_all_[d].segment(free_vars_start_index_, num_vars_free_) =
         -0.5 * inv_control_costs_[d] * linear_control_costs_[d];
   }
+  min_control_cost_parameters_all_ = parameters_all_;
+  min_control_cost_parameters_free_.resize(num_dimensions_);
+  for (int d=0; d<num_dimensions_; ++d)
+  {
+    min_control_cost_parameters_free_[d] = min_control_cost_parameters_all_[d].segment(free_vars_start_index_, num_vars_free_);
+  }
   return true;
 }
 
@@ -276,6 +282,7 @@ bool CovariantMovementPrimitive::computeControlCosts(const std::vector<Eigen::Ve
       costs_all += movement_dt_ * weight * (Ax * Ax).matrix();
     }
     control_costs[d] = costs_all.segment(free_vars_start_index_, num_vars_free_);
+    //control_costs[d] = Eigen::VectorXd::Zero(num_vars_free_); // TODO FIXME we don't use the cost above for now
     for (int i=0; i<free_vars_start_index_; ++i)
     {
       control_costs[d](0) += costs_all(i);

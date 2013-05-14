@@ -177,6 +177,8 @@ public:
 
     const Eigen::MatrixXd& getDifferentiationMatrix(int derivative_number) const;
 
+    const std::vector<Eigen::VectorXd>& getMinControlCostParameters() const;
+
     double getMovementDuration() const;
     double getMovementDt() const;
 private:
@@ -204,6 +206,8 @@ private:
     std::vector<double> constant_control_costs_; // to make the control cost not appear negative!
 
     std::vector<Eigen::VectorXd> parameters_all_;
+    std::vector<Eigen::VectorXd> min_control_cost_parameters_all_;
+    std::vector<Eigen::VectorXd> min_control_cost_parameters_free_;
 
     std::vector<Eigen::MatrixXd> differentiation_matrices_;
     void createDifferentiationMatrices();
@@ -234,6 +238,11 @@ inline bool CovariantMovementPrimitive::getParametersAll(std::vector<Eigen::Vect
 {
     parameters = parameters_all_;
     return true;
+}
+
+inline const std::vector<Eigen::VectorXd>& CovariantMovementPrimitive::getMinControlCostParameters() const
+{
+  return min_control_cost_parameters_free_;
 }
 
 inline bool CovariantMovementPrimitive::setParameters(const std::vector<Eigen::VectorXd>& parameters)

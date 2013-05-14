@@ -45,9 +45,9 @@ int Stomp2DTest::run()
   initial_trajectory.resize(num_dimensions_, Eigen::VectorXd::Zero(num_time_steps_ + 2*TRAJECTORY_PADDING));
   for (int d=0; d<num_dimensions_; ++d)
   {
-    derivative_costs[d].col(STOMP_VELOCITY) = Eigen::VectorXd::Ones(num_time_steps_ + 2*TRAJECTORY_PADDING);
+    //derivative_costs[d].col(STOMP_VELOCITY) = Eigen::VectorXd::Ones(num_time_steps_ + 2*TRAJECTORY_PADDING);
     //derivative_costs[d].col(STOMP_ACCELERATION) = 0.01*Eigen::VectorXd::Ones(num_time_steps_ + 2*TRAJECTORY_PADDING);
-    //derivative_costs[d].col(STOMP_ACCELERATION) = Eigen::VectorXd::Ones(num_time_steps_ + 2*TRAJECTORY_PADDING);
+    derivative_costs[d].col(STOMP_ACCELERATION) = Eigen::VectorXd::Ones(num_time_steps_ + 2*TRAJECTORY_PADDING);
     //derivative_costs[d].col(STOMP_POSITION) = 0.0001 * Eigen::VectorXd::Ones(num_time_steps_ + 2*TRAJECTORY_PADDING);
     initial_trajectory[d].head(TRAJECTORY_PADDING) = 0.01*Eigen::VectorXd::Ones(TRAJECTORY_PADDING);
     initial_trajectory[d].tail(TRAJECTORY_PADDING) = 0.99*Eigen::VectorXd::Ones(TRAJECTORY_PADDING);
@@ -97,6 +97,11 @@ int Stomp2DTest::run()
     {
       chomp_->runSingleIteration(i);
       chomp_->getNoiselessRollout(noiseless_rollout);
+      for (unsigned int d=0; d<num_dimensions_; ++d)
+      {
+        fprintf(stddev_file, "%f\t", 0.0);
+      }
+      fprintf(stddev_file, "\n");
     }
     else
     {
@@ -127,8 +132,8 @@ int Stomp2DTest::run()
       {
         std::stringstream ss2;
         ss2 << output_dir_ << "/noisy_" << i << "_" << j << ".txt";
-        tmp_policy.setParameters(rollouts[j].parameters_noise_projected_);
-//        tmp_policy.setParameters(rollouts[j].parameters_noise_);
+        //tmp_policy.setParameters(rollouts[j].parameters_noise_projected_);
+        tmp_policy.setParameters(rollouts[j].parameters_noise_);
         tmp_policy.writeToFile(ss2.str());
       }
     }
@@ -250,7 +255,7 @@ bool Stomp2DTest::execute(std::vector<Eigen::VectorXd>& parameters,
     if (compute_gradients)
     {
       cost = evaluateCostPathWithGradients(px, py, x, y, vel(0,t), vel(1,t), true,
-                                           acc(0,t), acc(1,t), gradients[0](t), gradients[1](t));
+                                           acc(0,t), acc(1,t), gradients[0](t-TRAJECTORY_PADDING), gradients[1](t-TRAJECTORY_PADDING));
     }
     else
     {

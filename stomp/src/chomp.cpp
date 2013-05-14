@@ -56,6 +56,8 @@ bool CHOMP::runSingleIteration(int iteration_number)
     noiseless_rollout_.total_cost_ += noiseless_rollout_.control_costs_[d].sum();
   }
 
+  ROS_INFO("Cost = %f", noiseless_rollout_.total_cost_);
+
   for (int d=0; d<num_dimensions_; ++d)
   {
     //std::cout << "Dimension " << d << "gradient = \n" << (gradients_[d] + control_cost_gradients_[d]);
