@@ -620,9 +620,10 @@ bool PolicyImprovement::computeParameterUpdates()
 //      adapted_stddevs_[d] = 0.8 * adapted_stddevs_[d] + 0.2 * sqrt(var);
 //      ROS_INFO("Dimension %d: new stddev = %f", d, adapted_stddevs_[d]);
 
-      // true CMA method + minimization of frobenius norm
       double frob_stddev = 0.0, numer=0.0, denom=0.0;
 
+      /*
+      // true CMA method + minimization of frobenius norm
       adapted_covariances_[d] = Eigen::MatrixXd::Zero(num_time_steps_, num_time_steps_);
       for (int r=0; r<num_rollouts_; ++r)
       {
@@ -643,7 +644,7 @@ bool PolicyImprovement::computeParameterUpdates()
       }
       frob_stddev = sqrt(numer/denom);
       double prev_frob_stddev = frob_stddev;
-
+*/
 
       // new KL divergence M projection / ML estimation method
       denom = 0.0;
@@ -655,7 +656,7 @@ bool PolicyImprovement::computeParameterUpdates()
     			  double(rollouts_[r].noise_[d].transpose() * control_costs_[d] * rollouts_[r].noise_[d]);
       }
       frob_stddev = sqrt(numer/(denom*num_time_steps_));
-      ROS_INFO("Frobenius stddev = %f, KL Mproj stddev = %f", prev_frob_stddev, frob_stddev);
+  //    ROS_INFO("Frobenius stddev = %f, KL Mproj stddev = %f", prev_frob_stddev, frob_stddev);
 
 
 
