@@ -89,6 +89,8 @@ private:
   boost::shared_ptr<stomp::CHOMP> chomp_;
   boost::shared_ptr<stomp::CovariantMovementPrimitive> policy_;
   ros::NodeHandle node_handle_;
+  ros::Publisher rviz_pub_;
+  bool publish_to_rviz_;
 
   int num_iterations_;
   int num_time_steps_;
@@ -102,6 +104,9 @@ private:
   bool save_noiseless_trajectories_;
   bool save_cost_function_;
   double resolution_;
+  double delay_per_iteration_;
+  double cost_viz_scaling_const_;
+  double cost_viz_scaling_factor_;
   std::vector<Obstacle> obstacles_;
 
   Eigen::MatrixXd vel_diff_matrix_;
@@ -111,6 +116,8 @@ private:
 
   void readParameters();
   void writeCostFunction();
+  void visualizeCostFunction();
+  void visualizeTrajectory(Rollout& rollout, bool noiseless, int id);
 
   double evaluateMapCost(double x, double y) const;
   void evaluateMapGradients(double x, double y, double& gx, double& gy) const;

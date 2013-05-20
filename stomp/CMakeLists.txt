@@ -36,7 +36,7 @@ include_directories(include
   ${catkin_INCLUDE_DIRS}
   ${OpenMP_INCLUDE_DIRS}
   ${EIGEN_INCLUDE_DIRS})
-add_definitions(${EIGEN_DEFINITIONS} ${OpenMP_CXX_FLAGS})
+add_definitions(${EIGEN_DEFINITIONS} ${OpenMP_CXX_FLAGS} -DEIGEN_NO_DEBUG)
 
 target_link_libraries(test_stomp2d stomp)
 target_link_libraries(test_cmp stomp)

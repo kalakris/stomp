@@ -621,15 +621,18 @@ bool PolicyImprovement::computeParameterUpdates()
 //      ROS_INFO("Dimension %d: new stddev = %f", d, adapted_stddevs_[d]);
 
       // true CMA method + minimization of frobenius norm
+      double frob_stddev = 0.0, numer=0.0, denom=0.0;
+
       adapted_covariances_[d] = Eigen::MatrixXd::Zero(num_time_steps_, num_time_steps_);
       for (int r=0; r<num_rollouts_; ++r)
       {
         adapted_covariances_[d] += rollouts_[r].full_probabilities_[d] *
             rollouts_[r].noise_[d] * rollouts_[r].noise_[d].transpose();
       }
+
       // minimize frobenius norm of diff between a_c and std_dev^2 * inv_control_cost
-      double numer = 0.0;
-      double denom = 0.0;
+      numer = 0.0;
+      denom = 0.0;
       for (int i=0; i<num_time_steps_; ++i)
       {
         for (int j=0; j<num_time_steps_; ++j)
@@ -638,7 +641,23 @@ bool PolicyImprovement::computeParameterUpdates()
           denom += inv_control_costs_[d](i,j) * inv_control_costs_[d](i,j);
         }
       }
-      double frob_stddev = sqrt(numer/denom);
+      frob_stddev = sqrt(numer/denom);
+      double prev_frob_stddev = frob_stddev;
+
+
+      // new KL divergence M projection / ML estimation method
+      denom = 0.0;
+      numer = 0.0;
+      for (int r=0; r<num_rollouts_; ++r)
+      {
+    	  denom += rollouts_[r].full_probabilities_[d];
+    	  numer += rollouts_[r].full_probabilities_[d] *
+    			  double(rollouts_[r].noise_[d].transpose() * control_costs_[d] * rollouts_[r].noise_[d]);
+      }
+      frob_stddev = sqrt(numer/(denom*num_time_steps_));
+      ROS_INFO("Frobenius stddev = %f, KL Mproj stddev = %f", prev_frob_stddev, frob_stddev);
+
+
 
 //      double kl_stddev = sqrt((control_costs_[d]*adapted_covariances_[d]).trace() / num_parameters_[d]);
 //      ROS_INFO("frob = %lf, kl = %lf", frob_stddev, kl_stddev);

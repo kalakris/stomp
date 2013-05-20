@@ -14,12 +14,16 @@
 #include <stdlib.h>
 #include <time.h>
 #include <stomp/stomp_utils.h>
+#include <visualization_msgs/Marker.h>
 
 namespace stomp
 {
 
 int Stomp2DTest::run()
 {
+  // initialize rviz publisher
+  rviz_pub_ = node_handle_.advertise<visualization_msgs::Marker>("visualization", 100, false);
+
   srand(time(NULL));
   num_dimensions_ = 2;
   resolution_ = 0.002;
@@ -72,6 +76,8 @@ int Stomp2DTest::run()
 
   if (save_cost_function_)
     writeCostFunction();
+  if (publish_to_rviz_)
+    visualizeCostFunction();
 
   ros::NodeHandle stomp_node_handle(node_handle_, "stomp");
   ros::NodeHandle chomp_node_handle(node_handle_, "chomp");
@@ -89,6 +95,8 @@ int Stomp2DTest::run()
 
   CovariantMovementPrimitive tmp_policy = *policy_;
 
+  ros::Time prev_iter_stamp = ros::Time::now();
+
   for (int i=1; i<=num_iterations_; ++i)
   {
     std::vector<Rollout> rollouts;
@@ -97,11 +105,14 @@ int Stomp2DTest::run()
     {
       chomp_->runSingleIteration(i);
       chomp_->getNoiselessRollout(noiseless_rollout);
-      for (unsigned int d=0; d<num_dimensions_; ++d)
+      if (save_noiseless_trajectories_)
       {
-        fprintf(stddev_file, "%f\t", 0.0);
+        for (unsigned int d=0; d<num_dimensions_; ++d)
+        {
+          fprintf(stddev_file, "%f\t", 0.0);
+        }
+        fprintf(stddev_file, "\n");
       }
-      fprintf(stddev_file, "\n");
     }
     else
     {
@@ -111,11 +122,14 @@ int Stomp2DTest::run()
 
       std::vector<double> stddevs;
       stomp_->getAdaptedStddevs(stddevs);
-      for (unsigned int d=0; d<stddevs.size(); ++d)
+      if (save_noiseless_trajectories_)
       {
-        fprintf(stddev_file, "%f\t", stddevs[d]);
+        for (unsigned int d=0; d<stddevs.size(); ++d)
+        {
+          fprintf(stddev_file, "%f\t", stddevs[d]);
+        }
+        fprintf(stddev_file, "\n");
       }
-      fprintf(stddev_file, "\n");
     }
 
     if (save_noiseless_trajectories_)
@@ -123,6 +137,7 @@ int Stomp2DTest::run()
       std::stringstream ss;
       ss << output_dir_ << "/noiseless_" << i << ".txt";
       policy_->writeToFile(ss.str());
+      fprintf(cost_file, "%f\n", noiseless_rollout.total_cost_);
     }
 
     if (save_noisy_trajectories_)
@@ -137,9 +152,29 @@ int Stomp2DTest::run()
         tmp_policy.writeToFile(ss2.str());
       }
     }
-    fprintf(cost_file, "%f\n", noiseless_rollout.total_cost_);
     //printf("%f\n", noiseless_rollout.total_cost_);
 
+    if (publish_to_rviz_)
+    {
+      // wait until delay_per_iteration
+      double delay = 0.0;
+      while (delay < delay_per_iteration_)
+      {
+        delay = (ros::Time::now() - prev_iter_stamp).toSec();
+        if (delay < delay_per_iteration_)
+        {
+          ros::Duration(delay_per_iteration_ - delay).sleep();
+        }
+      }
+      prev_iter_stamp = ros::Time::now();
+
+      visualizeTrajectory(noiseless_rollout, true, 0);
+      if (!use_chomp_)
+      {
+        for (size_t j=0; j<rollouts.size(); ++j)
+          visualizeTrajectory(rollouts[j], false, j+1);
+      }
+    }
   }
 
   fclose(stddev_file);
@@ -181,6 +216,7 @@ void Stomp2DTest::writeCostFunction()
   fclose(f);
 }
 
+
 void Stomp2DTest::readParameters()
 {
   // WARNING, TODO: no error checking here!!!
@@ -205,6 +241,8 @@ void Stomp2DTest::readParameters()
   STOMP_VERIFY(node_handle_.getParam("save_noisy_trajectories", save_noisy_trajectories_));
   STOMP_VERIFY(node_handle_.getParam("save_noiseless_trajectories", save_noiseless_trajectories_));
   STOMP_VERIFY(node_handle_.getParam("save_cost_function", save_cost_function_));
+  STOMP_VERIFY(node_handle_.getParam("publish_to_rviz", publish_to_rviz_));
+  STOMP_VERIFY(node_handle_.getParam("delay_per_iteration", delay_per_iteration_));
 }
 
 bool Stomp2DTest::execute(std::vector<Eigen::VectorXd>& parameters,
@@ -450,6 +488,128 @@ double Stomp2DTest::getControlCostWeight()
 {
   return control_cost_weight_;
 }
+
+void Stomp2DTest::visualizeCostFunction()
+{
+  visualization_msgs::Marker marker;
+
+  int num_x = lrint(1.0 / resolution_) + 1;
+  int num_y = lrint(1.0 / resolution_) + 1;
+
+  marker.id = 0;
+  marker.ns = "cost";
+  marker.header.frame_id = "BASE";
+  marker.header.stamp = ros::Time::now();
+  marker.type = marker.CUBE_LIST;
+  marker.action = visualization_msgs::Marker::ADD;
+  marker.scale.x = resolution_;
+  marker.scale.y = resolution_;
+  marker.scale.z = resolution_;
+  marker.pose.position.x = 0.0;
+  marker.pose.position.y = 0.0;
+  marker.pose.position.z = 0.0;
+  marker.pose.orientation.w = 1.0;
+  marker.pose.orientation.x = 0.0;
+  marker.pose.orientation.y = 0.0;
+  marker.pose.orientation.z = 0.0;
+  marker.points.reserve(num_x*num_y);
+  marker.colors.reserve(num_x*num_y);
+
+  std_msgs::ColorRGBA color;
+  geometry_msgs::Point point;
+
+  double min_cost = std::numeric_limits<double>::max();
+  double max_cost = std::numeric_limits<double>::min();
+  for (int i=0; i<num_x; ++i)
+  {
+    double x = i*resolution_;
+    for (int j=0; j<num_y; ++j)
+    {
+      double y = j*resolution_;
+      double cost = evaluateMapCost(x, y);
+      if (cost > max_cost)
+        max_cost = cost;
+      if (cost < min_cost)
+        min_cost = cost;
+      point.x = x;
+      point.y = y;
+      point.z = cost; // temp storage
+      marker.points.push_back(point);
+    }
+  }
+
+  // now loop and set colors based on the scaling
+  for (size_t i=0; i<marker.points.size(); ++i)
+  {
+    double cost = marker.points[i].z;
+    double scaled_cost = (cost - min_cost)/(max_cost - min_cost);
+    color.r = scaled_cost;
+    color.b = 0.5 * (1.0 - scaled_cost);
+    color.g = 0.0;
+    color.a = 1.0;
+    marker.colors.push_back(color);
+    marker.points[i].z = 0.1 * scaled_cost;
+  }
+
+  cost_viz_scaling_const_ = min_cost;
+  cost_viz_scaling_factor_ = 0.1 /(max_cost - min_cost);
+
+  int timeout = 5;
+  int counter = 0;
+  while (rviz_pub_.getNumSubscribers() == 0 && counter < timeout)
+  {
+    ROS_WARN("Waiting for rviz to connect...");
+    ros::Duration(1.0).sleep();
+    ++counter;
+  }
+  rviz_pub_.publish(marker);
+}
+
+void Stomp2DTest::visualizeTrajectory(Rollout& rollout, bool noiseless, int id)
+{
+  visualization_msgs::Marker marker;
+  marker.header.frame_id = "BASE";
+  marker.header.stamp = ros::Time::now();
+  marker.ns="trajectory";
+  marker.id = id;
+  marker.type = visualization_msgs::Marker::LINE_STRIP;
+  marker.action = visualization_msgs::Marker::ADD;
+  marker.points.resize(num_time_steps_);
+  //marker.colors.resize(num_time_steps_);
+  for (int t=0; t<num_time_steps_; ++t)
+  {
+    marker.points[t].x = rollout.parameters_noise_[0][t];
+    marker.points[t].y = rollout.parameters_noise_[1][t];
+    double cost = evaluateMapCost(marker.points[t].x, marker.points[t].y);
+    marker.points[t].z = (cost - cost_viz_scaling_const_) * cost_viz_scaling_factor_;
+    marker.points[t].z += 0.001;
+  }
+  marker.pose.position.x = 0;
+  marker.pose.position.y = 0;
+  marker.pose.position.z = 0;
+  marker.pose.orientation.x = 0.0;
+  marker.pose.orientation.y = 0.0;
+  marker.pose.orientation.z = 0.0;
+  marker.pose.orientation.w = 1.0;
+  if (noiseless)
+  {
+    marker.scale.x = 0.01;
+    marker.color.a = 1.0;
+    marker.color.r = 0.0;
+    marker.color.g = 1.0;
+    marker.color.b = 0.0;
+  }
+  else
+  {
+    marker.scale.x = 0.002;
+    marker.color.a = 0.7;
+    marker.color.r = 0.2;
+    marker.color.g = 0.5;
+    marker.color.b = 0.5;
+  }
+  rviz_pub_.publish(marker);
+}
+
 
 } /* namespace stomp */
 

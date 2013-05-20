@@ -115,7 +115,7 @@ class Stomp2DTestPlotter:
         plt.show()
 
 if __name__=='__main__':
-    fig = plt.figure(1, figsize=(8,8), dpi=128, frameon=False)
+    fig = plt.figure(1, figsize=(2,2), dpi=128, frameon=False)
     ax = plt.Axes(fig, [0., 0., 1., 1.])
     ax.set_axis_off()
     fig.add_axes(ax)
@@ -124,5 +124,5 @@ if __name__=='__main__':
     s.load_cost_function()
     s.plot_cost_function()
     plt.axis([0,1,0,1])
-    s.animate_trajectories(True)
+    s.animate_trajectories(False)
     #s.animate_trajectories(True)
