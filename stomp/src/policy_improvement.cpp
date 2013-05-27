@@ -663,7 +663,8 @@ bool PolicyImprovement::computeParameterUpdates()
 //      double kl_stddev = sqrt((control_costs_[d]*adapted_covariances_[d]).trace() / num_parameters_[d]);
 //      ROS_INFO("frob = %lf, kl = %lf", frob_stddev, kl_stddev);
 
-      adapted_stddevs_[d] = 0.8 * adapted_stddevs_[d] + 0.2 * frob_stddev;
+      double update_rate = 0.2;
+      adapted_stddevs_[d] = (1.0 - update_rate) * adapted_stddevs_[d] + update_rate * frob_stddev;
 
       if (adapted_stddevs_[d] < noise_min_stddev_[d])
         adapted_stddevs_[d] = noise_min_stddev_[d];

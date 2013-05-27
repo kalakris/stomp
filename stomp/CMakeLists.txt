@@ -30,14 +30,18 @@ add_executable(test_stomp2d
 add_executable(test_cmp
   test/test_cmp.cpp
 )
-
+add_executable(test_eigen_perf
+  test/eigen_perf_test.cpp
+)
 
 include_directories(include
   ${catkin_INCLUDE_DIRS}
   ${OpenMP_INCLUDE_DIRS}
   ${EIGEN_INCLUDE_DIRS})
-add_definitions(${EIGEN_DEFINITIONS} ${OpenMP_CXX_FLAGS} -DEIGEN_NO_DEBUG)
+add_definitions(${EIGEN_DEFINITIONS} ${OpenMP_CXX_FLAGS})
+add_definitions(-DEIGEN_NO_DEBUG -DNDEBUG)
 
 target_link_libraries(test_stomp2d stomp)
 target_link_libraries(test_cmp stomp)
 target_link_libraries(stomp ${catkin_LIBRARIES} ${OpenMP_CXX_FLAGS})
+target_link_libraries(test_eigen_perf ${Eigen_LIBRARIES} ${OpenMP_CXX_FLAGS})

@@ -502,9 +502,9 @@ void Stomp2DTest::visualizeCostFunction()
   marker.header.stamp = ros::Time::now();
   marker.type = marker.CUBE_LIST;
   marker.action = visualization_msgs::Marker::ADD;
-  marker.scale.x = resolution_;
-  marker.scale.y = resolution_;
-  marker.scale.z = resolution_;
+  marker.scale.x = resolution_*2.0;
+  marker.scale.y = resolution_*2.0;
+  marker.scale.z = resolution_*2.0;
   marker.pose.position.x = 0.0;
   marker.pose.position.y = 0.0;
   marker.pose.position.z = 0.0;
@@ -549,7 +549,13 @@ void Stomp2DTest::visualizeCostFunction()
     color.a = 1.0;
     marker.colors.push_back(color);
     marker.points[i].z = 0.1 * scaled_cost;
+
+    // interchange axes x and z
+    double x = marker.points[i].z;
+    marker.points[i].z = marker.points[i].x;
+    marker.points[i].x = x;
   }
+
 
   cost_viz_scaling_const_ = min_cost;
   cost_viz_scaling_factor_ = 0.1 /(max_cost - min_cost);
@@ -578,11 +584,11 @@ void Stomp2DTest::visualizeTrajectory(Rollout& rollout, bool noiseless, int id)
   //marker.colors.resize(num_time_steps_);
   for (int t=0; t<num_time_steps_; ++t)
   {
-    marker.points[t].x = rollout.parameters_noise_[0][t];
+    marker.points[t].z = rollout.parameters_noise_[0][t];
     marker.points[t].y = rollout.parameters_noise_[1][t];
-    double cost = evaluateMapCost(marker.points[t].x, marker.points[t].y);
-    marker.points[t].z = (cost - cost_viz_scaling_const_) * cost_viz_scaling_factor_;
-    marker.points[t].z += 0.001;
+    double cost = evaluateMapCost(rollout.parameters_noise_[0][t], rollout.parameters_noise_[1][t]);
+    marker.points[t].x = (cost - cost_viz_scaling_const_) * cost_viz_scaling_factor_;
+    marker.points[t].x += 0.005;
   }
   marker.pose.position.x = 0;
   marker.pose.position.y = 0;
