@@ -87,8 +87,8 @@ public:
 
   void computeCholeskyFactor()
   {
-    Eigen::SimplicialLLT<Eigen::SparseMatrix<double> > sparse_solver;
-    Eigen::LLT<Eigen::MatrixXd> dense_solver;
+    Eigen::SimplicialLLT<Eigen::SparseMatrix<double> >& sparse_solver = sparse_cholesky_solver;
+    Eigen::LLT<Eigen::MatrixXd>& dense_solver = dense_cholesky_solver;
 
     int reps = 1; // 10000 = 1.44s / 1.35s   (0.144ms / 0.135ms for sparse matrix analysis)
 
@@ -141,7 +141,7 @@ public:
     int num_constraints = num_time_steps-1;
 
     // allocate memory
-    dense_C = Eigen::MatrixXd::Zero(num_constraints, size);
+    dense_C = Eigen::MatrixXd::Zero(size, num_constraints);
     sparse_C = Eigen::SparseMatrix<double, Eigen::ColMajor>(size, num_constraints);
 
     // create triplets
@@ -152,8 +152,8 @@ public:
     {
       for (int j=0; j<num_joints; ++j)
       {
-        triplets.push_back(Eigen::Triplet<double>(t*num_joints + j, t, -1.0));
-        triplets.push_back(Eigen::Triplet<double>((t+1)*num_joints + j, t, +1.0));
+        triplets.push_back(Eigen::Triplet<double>(t*num_joints + j, t, -1.0 * Eigen::internal::random<double>(0.0,1.0)));
+        triplets.push_back(Eigen::Triplet<double>((t+1)*num_joints + j, t, +1.0 * Eigen::internal::random<double>(0.0,1.0)));
       }
     }
 
@@ -162,7 +162,7 @@ public:
     {
       Eigen::Triplet<double>& t = triplets[i];
       //printf("[%3d, %3d] = %f\n", t.row(), t.col(), t.value());
-      dense_C(t.col(), t.row()) = t.value();
+      dense_C(t.row(), t.col()) = t.value();
     }
 
     // fill the sparse matrix
@@ -176,7 +176,7 @@ public:
     Eigen::ColPivHouseholderQR<Eigen::MatrixXd> dense_solver;
 
     //sparse_solver.compute(sparse_C.transpose());
-    int reps = 500; // 500 = 0.01s
+    int reps = 1; // 500 = 0.01s
     {
       printf("%d reps of sparse QR reordering: ", reps);
       boost::progress_timer t;
@@ -184,7 +184,7 @@ public:
         sparse_solver.analyzePattern(sparse_C);
     }
 
-    reps = 500; // 500 = 1.49 s (3ms for sparse QR decomposition)
+    reps = 1000; // 500 = 1.49 s (3ms for sparse QR decomposition)
     {
       printf("%d reps of sparse QR factorization: ", reps);
       boost::progress_timer t;
@@ -194,12 +194,12 @@ public:
     //sparse_C_Q = sparse_solver.matrixQ();
     sparse_C_R = sparse_solver.matrixR();
 
-    reps = 500; // 500 = 1.65s (3.3ms for dense QR decomposition)
+    reps = 1000; // 500 = 1.65s (3.3ms for dense QR decomposition)
     {
       printf("%d reps of dense QR decomposition: ", reps);
       boost::progress_timer t;
       for (int i=0; i<reps; ++i)
-        dense_solver.compute(dense_C.transpose());
+        dense_solver.compute(dense_C);
     }
     dense_C_Q = dense_solver.matrixQ();
     dense_C_R = dense_solver.matrixR();
@@ -208,13 +208,73 @@ public:
 
   }
 
+  void computeConstraintProjector()
+  {
+    // first the dense version
+    int reps = 100; // 100 = 1.83s (18ms for dense constraint projector computation)
+    {
+      printf("%d reps of dense projector computation: ", reps);
+      boost::progress_timer t;
+      for (int i=0; i<reps; ++i)
+      {
+        Eigen::MatrixXd dense_V = dense_cholesky_solver.solve(dense_C);  // V => n x m
+        //std::cout << V << std::endl;
+
+        // A => m x n
+        // AV => m x m
+
+        Eigen::MatrixXd dense_AV = dense_C.transpose() * dense_V;
+
+        // AV is symmetric
+        dense_projector.transpose() = dense_AV.llt().solve(dense_V.transpose());
+      }
+    }
+
+
+    // now the sparse version
+    reps = 100;
+    {
+      printf("%d reps of sparse projector computation: ", reps);
+      boost::progress_timer t;
+      for (int i=0; i<reps; ++i)
+      {
+        Eigen::SparseMatrix<double> sparse_V = sparse_cholesky_solver.solve(sparse_C); // 2.71ms
+        //Eigen::MatrixXd dense_V = sparse_V; // slow
+        Eigen::MatrixXd dense_V = sparse_cholesky_solver.solve(dense_C); // 1.5 ms
+
+        Eigen::MatrixXd dense_AV = dense_C.transpose() * dense_V;
+        //dense_projector.transpose() = dense_AV.ldlt().solve(dense_V.transpose());
+        dense_projector.transpose() = dense_AV.ldlt().solve(dense_V.transpose());
+
+
+
+//        Eigen::SparseMatrix<double> sparse_AV = sparse_C.transpose() * sparse_V;
+//
+//
+//        Eigen::SimplicialLDLT<Eigen::SparseMatrix<double> > sparse_chol_solver;
+//        sparse_chol_solver.compute(sparse_AV);
+//        Eigen::SparseMatrix<double> sparse_V_trans = sparse_V.transpose();
+//        Eigen::SparseMatrix<double> sparse_W_trans = sparse_chol_solver.solve(sparse_V_trans);
+//        sparse_projector = sparse_W_trans.transpose();
+      }
+    }
+
+    //Eigen::MatrixXd dense_sparse_proj = sparse_projector;
+    //printf("projector error = %f\n", (dense_sparse_proj - dense_projector).norm());
+
+  }
+
 private:
   // A = num diff matrix
   // R = A^T A  (quadratic cost matrix)
   // R = L L^T  (L -> chol_R)
   // C = constraint matrix
-  Eigen::MatrixXd dense_A, dense_R, dense_chol_R, dense_C, dense_C_Q, dense_C_R;
-  Eigen::SparseMatrix<double> sparse_A, sparse_R, sparse_chol_R, sparse_C, sparse_C_Q, sparse_C_R;
+  Eigen::MatrixXd dense_A, dense_R, dense_chol_R, dense_C, dense_C_Q, dense_C_R, dense_projector;
+  Eigen::SparseMatrix<double> sparse_A, sparse_R, sparse_chol_R, sparse_C, sparse_C_Q, sparse_C_R, sparse_projector;
+
+  Eigen::SimplicialLLT<Eigen::SparseMatrix<double> > sparse_cholesky_solver;
+  Eigen::LLT<Eigen::MatrixXd> dense_cholesky_solver;
+
   static const int num_time_steps = 100;
   static const int num_joints = 7;
   static const int size = num_time_steps * num_joints;
@@ -229,6 +289,8 @@ int main(int argc, char** argv)
   ept.createCostMatrix();
   ept.computeCholeskyFactor();
   ept.createConstraintMatrix();
-  ept.computeConstraintQR();
+  //ept.computeConstraintQR();
+
+  ept.computeConstraintProjector();
   return 0;
 }
