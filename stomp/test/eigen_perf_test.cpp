@@ -7,6 +7,9 @@
 #include <iostream>
 #include <ros/time.h>
 #include <boost/progress.hpp>
+#include <boost/random/variate_generator.hpp>
+#include <boost/random/normal_distribution.hpp>
+#include <boost/random/mersenne_twister.hpp>
 
 static const double diff_2[2] = {-1.0, 1.0};
 static const double diff_3[3] = {-1.0, 2.0, -1.0};
@@ -134,11 +137,13 @@ public:
 //    printf("Error norm = %f\n", diff.norm());
 //
 //    std::cout << diff;
+
+    //sparse_chol_R = sparse_solver.matrixL();
   }
 
   void createConstraintMatrix()
   {
-    int num_constraints = num_time_steps-1;
+    num_constraints = num_time_steps-1;
 
     // allocate memory
     dense_C = Eigen::MatrixXd::Zero(size, num_constraints);
@@ -211,7 +216,7 @@ public:
   void computeConstraintProjector()
   {
     // first the dense version
-    int reps = 100; // 100 = 1.83s (18ms for dense constraint projector computation)
+    int reps = 1; // 100 = 2s (20ms for dense constraint projector computation)
     {
       printf("%d reps of dense projector computation: ", reps);
       boost::progress_timer t;
@@ -226,13 +231,14 @@ public:
         Eigen::MatrixXd dense_AV = dense_C.transpose() * dense_V;
 
         // AV is symmetric
+        dense_projector = Eigen::MatrixXd(size, num_constraints);
         dense_projector.transpose() = dense_AV.llt().solve(dense_V.transpose());
       }
     }
 
 
     // now the sparse version
-    reps = 100;
+    reps = 1; // 100 = 1.4s (14ms for sparse constraint projector computation)
     {
       printf("%d reps of sparse projector computation: ", reps);
       boost::progress_timer t;
@@ -244,8 +250,14 @@ public:
 
         Eigen::MatrixXd dense_AV = dense_C.transpose() * dense_V;
         //dense_projector.transpose() = dense_AV.ldlt().solve(dense_V.transpose());
-        dense_projector.transpose() = dense_AV.ldlt().solve(dense_V.transpose());
+        dense_projector = Eigen::MatrixXd(size, num_constraints);
+        dense_projector.transpose() = dense_AV.llt().solve(dense_V.transpose());
 
+
+//        printf("sparse_V = %d x %d\n", sparse_V.rows(), sparse_V.cols());
+//        printf("dense_V = %ld x %ld\n", dense_V.rows(), dense_V.cols());
+//        printf("dense_AV = %ld x %ld\n", dense_AV.rows(), dense_AV.cols());
+//        printf("dense_projector = %ld x %ld\n", dense_projector.rows(), dense_projector.cols());
 
 
 //        Eigen::SparseMatrix<double> sparse_AV = sparse_C.transpose() * sparse_V;
@@ -264,13 +276,84 @@ public:
 
   }
 
+  void generateSamples() // roughly 87 us per sample
+  {
+    //sparse_cholesky_solver.matrixL();
+    // unconditioned sample = Pinv * L^T^-1 * eps
+
+    boost::mt19937 rng;
+    boost::normal_distribution<> normal_dist(0.0, 1.0);
+    boost::variate_generator<boost::mt19937, boost::normal_distribution<> > gaussian(rng, normal_dist);
+
+    const int num_samples = 24;
+    Eigen::MatrixXd normal_samples = Eigen::MatrixXd::Zero(size, num_samples);
+
+    for (int i=0; i<size; ++i)
+    {
+      for (int j=0; j<num_samples; ++j)
+      {
+        normal_samples(i,j) = gaussian();
+      }
+    }
+
+    Eigen::MatrixXd unconditioned_samples, conditioned_samples;
+
+    // sparse method
+    int reps = 1000;
+    {
+      printf("%d reps of sparse sampling: ", reps);
+      boost::progress_timer t;
+      // find the unconditioned samples
+      for (int i=0; i<reps; ++i)
+      {
+        unconditioned_samples = sparse_cholesky_solver.permutationPinv() *
+            sparse_cholesky_solver.matrixU().triangularView<Eigen::Upper>().solve(normal_samples);
+      }
+    }
+
+    reps = 1000;
+    {
+      printf("%d reps of dense sample projection: ", reps);
+      boost::progress_timer t;
+      for (int i=0; i<reps; ++i)
+      {
+        conditioned_samples = unconditioned_samples - dense_projector *
+            (dense_C.transpose() * unconditioned_samples);
+      }
+    }
+
+    // dense method
+    {
+      // find the unconditioned samples
+//      unconditioned_samples =
+//          dense_cholesky_solver.matrixU().triangularView<Eigen::Upper>().solve(normal_samples);
+    }
+
+    // find the conditioned samples
+
+//    Eigen::MatrixXd constraint_violations = dense_C.transpose() * unconditioned_samples; // num_constraints x num_samples
+//    Eigen::MatrixXd conditioned_samples = unconditioned_samples -
+//        dense_projector * constraint_violations;
+//    printf("dense projector = %ld x %ld\n", dense_projector.rows(), dense_projector.cols());
+
+
+
+    Eigen::MatrixXd constraint_violations = dense_C.transpose() * unconditioned_samples; // num_constraints x num_samples
+//    printf("unconditioned samples = %ld x %ld\n", unconditioned_samples.rows(), unconditioned_samples.cols());
+    printf("Constraint violations before = %f\n", constraint_violations.norm());
+    constraint_violations = dense_C.transpose() * conditioned_samples; // num_constraints x num_samples
+//    printf("conditioned samples = %ld x %ld\n", conditioned_samples.rows(), conditioned_samples.cols());
+    printf("Constraint violations after = %f\n", constraint_violations.norm());
+
+  }
+
 private:
   // A = num diff matrix
   // R = A^T A  (quadratic cost matrix)
   // R = L L^T  (L -> chol_R)
   // C = constraint matrix
-  Eigen::MatrixXd dense_A, dense_R, dense_chol_R, dense_C, dense_C_Q, dense_C_R, dense_projector;
-  Eigen::SparseMatrix<double> sparse_A, sparse_R, sparse_chol_R, sparse_C, sparse_C_Q, sparse_C_R, sparse_projector;
+  Eigen::MatrixXd dense_A, dense_R, dense_chol_R, dense_C, dense_C_Q, dense_C_R, dense_projector, dense_L;
+  Eigen::SparseMatrix<double> sparse_A, sparse_R, sparse_chol_R, sparse_C, sparse_C_Q, sparse_C_R, sparse_projector, sparse_L;
 
   Eigen::SimplicialLLT<Eigen::SparseMatrix<double> > sparse_cholesky_solver;
   Eigen::LLT<Eigen::MatrixXd> dense_cholesky_solver;
@@ -278,6 +361,7 @@ private:
   static const int num_time_steps = 100;
   static const int num_joints = 7;
   static const int size = num_time_steps * num_joints;
+  int num_constraints;
 };
 
 int main(int argc, char** argv)
@@ -292,5 +376,8 @@ int main(int argc, char** argv)
   //ept.computeConstraintQR();
 
   ept.computeConstraintProjector();
+
+  ept.generateSamples();
+
   return 0;
 }
