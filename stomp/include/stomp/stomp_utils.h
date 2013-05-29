@@ -75,6 +75,11 @@ static const double DIFF_RULES[NUM_DIFF_RULES][DIFF_RULE_LENGTH] = {
     {0,  1/12.0, -17/12.0,  46/12.0, -46/12.0, 17/12.0, -1/12.0}        // jerk
 };
 
+// simple central differences:
+//      -1/2,  0, 1/2
+//         1, -2,   1
+//  -1/2,  1,  0,  -1,  1/2
+
 enum CostComponents
 {
   STOMP_POSITION = 0,
