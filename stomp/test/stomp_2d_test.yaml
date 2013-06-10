@@ -6,9 +6,9 @@ movement_duration: 1.0
 control_cost_weight: 0.0001
 output_dir: stomp_test
 use_chomp: false
-save_noisy_trajectories: false
-save_noiseless_trajectories: false
-publish_to_rviz: true
+save_noisy_trajectories: true
+save_noiseless_trajectories: true
+publish_to_rviz: false
 delay_per_iteration: 0.04
 num_iterations: 500
 save_cost_function: true
