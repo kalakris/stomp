@@ -37,15 +37,21 @@ add_executable(test_cmp
 #  test/stomp_constrained_test.cpp
 #)
 
+add_executable(stomp_test_distributions
+  test/test_distributions.cpp
+  test/stomp_constrained.cpp
+)
+
 include_directories(include
   ${catkin_INCLUDE_DIRS}
   ${OpenMP_INCLUDE_DIRS}
   ${EIGEN_INCLUDE_DIRS})
 add_definitions(${EIGEN_DEFINITIONS} ${OpenMP_CXX_FLAGS})
-add_definitions(-DEIGEN_NO_DEBUG -DNDEBUG)
+#add_definitions(-DEIGEN_NO_DEBUG -DNDEBUG)
 
 target_link_libraries(test_stomp2d stomp)
 target_link_libraries(test_cmp stomp)
 target_link_libraries(stomp ${catkin_LIBRARIES} ${OpenMP_CXX_FLAGS})
 #target_link_libraries(test_eigen_perf ${Eigen_LIBRARIES} ${OpenMP_CXX_FLAGS})
 #target_link_libraries(stomp_constrained_test ${catkin_LIBRARIES} ${OpenMP_CXX_FLAGS})
+target_link_libraries(stomp_test_distributions ${catkin_LIBRARIES} ${OpenMP_CXX_FLAGS})

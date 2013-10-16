@@ -597,6 +597,25 @@ public:
     }
   }
 
+  void writeToFile(int iter)
+  {
+    std::stringstream filename;
+    filename << "/tmp/stomp_constrained_iter_" << iter << ".txt";
+    FILE* file = fopen(filename.str().c_str(), "w");
+
+    for (int j=0; j<num_joints; ++j)
+    {
+      for (int t=0; t<num_time_steps; t+=9)
+      {
+        int ind = getIndex(j, t);
+        fprintf(file, "%f\t%f\t", mean_link_positions_x_(ind), mean_link_positions_y_(ind));
+      }
+      fprintf(file,"\n");
+    }
+
+    fclose(file);
+  }
+
   void plotMeanTrajectory()
   {
     plotTrajectory(mean_link_positions_x_, mean_link_positions_y_, 0);
@@ -756,6 +775,7 @@ int main(int argc, char** argv)
 
       ept.computeFKForMean();
       ept.plotMeanTrajectory();
+      ept.writeToFile(iter);
       ept.updateConstraintMatrix();
       ept.computeConstraintProjector();
       ept.generateSamples();
