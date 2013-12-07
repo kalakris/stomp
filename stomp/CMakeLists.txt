@@ -39,7 +39,7 @@ add_executable(test_cmp
 
 add_executable(stomp_test_distributions
   test/test_distributions.cpp
-  test/stomp_constrained.cpp
+  src/stomp_constrained.cpp
 )
 
 include_directories(include

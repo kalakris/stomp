@@ -1,7 +1,7 @@
 #include <string>
 #include <cstdio>
 #include <boost/shared_ptr.hpp>
-#include "stomp_constrained.h"
+#include <stomp/stomp_constrained.h>
 
 void saveSamples(const std::string& output_dir,
                  const std::vector<Eigen::MatrixXd*>& samples)

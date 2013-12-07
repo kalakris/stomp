@@ -10,7 +10,7 @@
 #include <boost/random/variate_generator.hpp>
 #include <boost/random/normal_distribution.hpp>
 #include <boost/random/mersenne_twister.hpp>
-#include "stomp_constrained.h"
+#include <stomp/stomp_constrained.h>
 
 StompConstrained::StompConstrained():
   normal_dist_(0.0, 1.0),
